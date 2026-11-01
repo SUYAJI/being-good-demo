@@ -507,7 +507,8 @@ input[type=range]:focus-visible { outline-offset:6px }
 .atlas-axis span { float:right }
 .atlas-reading { font-size:var(--text); padding:12px 0 }
 .atlas-view>.fine-print { max-width:600px }
-/* The note flows under the grid so a long recording list in the side column cannot cover it. */
 @media(min-width:1200px) {
   .atlas-view .atlas-reading { position:absolute; top:110px; left:460px; max-width:230px; line-height:1.9 }
+  /* The note stays under the grid, at the grid's width, so a long recording list in the side column cannot cover it. */
+  .atlas-view>.fine-print { max-width:420px }
 }
