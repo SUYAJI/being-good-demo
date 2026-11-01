@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.part.mp3
+.DS_Store
+Thumbs.db
+# Private analysis inputs never belong here.
+*.private.*
+*.sqlite
+*.sqlite3
+*.db
+*.exe

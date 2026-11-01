@@ -1,0 +1,115 @@
+/* Stage 1 interaction additions, in the Stage 2 hybrid palette (tokens in style.css). */
+
+/* 3D labels: hover details and clusters */
+.point-detail { font-family:var(--mono); font-size:12px; color:var(--ink) }
+.point-mood { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted) }
+.point-mood::before { content:''; width:8px; height:8px; border-radius:2px; background:var(--mood) }
+.point-cluster { font-size:12px; color:var(--muted) }
+.point-label:not(.is-hover) .point-detail,.point-label:not(.is-hover) .point-mood,.point-label:not(.is-hover) .point-cluster,.point-cluster:empty { display:none }
+.point-label.is-playing:not(.is-hover)::before { content:'▶ '; color:var(--signal) }
+
+/* Overlap chooser */
+.overlap-picker>p { font-size:12px; color:var(--muted); padding:4px 8px }
+.overlap-picker button strong { font-weight:600; font-size:14px }
+.overlap-picker button span { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted); font-family:var(--mono) }
+.overlap-picker button i { width:8px; height:8px; border-radius:2px; display:inline-block }
+
+/* 2D projections */
+.projection-ghost { fill:none; stroke:var(--faint); stroke-width:1 }
+.projection-path line { stroke:var(--ink); stroke-width:1.6; opacity:.55 }
+.projection-playing circle { fill:none; stroke:var(--signal); stroke-width:2.5 }
+.projection-playing.is-paused circle { stroke-dasharray:5 4 }
+.projection-brush { fill:#1C68A814; stroke:var(--focus); stroke-width:1.5; stroke-dasharray:5 4 }
+.point-readout { position:absolute; z-index:4; pointer-events:none; display:flex; flex-direction:column; gap:2px; width:250px; padding:8px 10px;
+  background:var(--readout); border:1px solid var(--key-border); border-radius:2px; font-size:12px; color:var(--muted) }
+.point-readout strong { color:var(--ink); font-size:14px; font-weight:600; overflow-wrap:anywhere }
+.point-readout .mono { color:var(--ink) }
+.point-readout span { display:flex; align-items:center; gap:6px }
+.point-readout i { width:8px; height:8px; border-radius:2px; display:inline-block }
+.region-panel { position:absolute; z-index:5; width:min(320px,calc(100% - 16px)); background:var(--readout); border:1px solid var(--ink); border-radius:2px; padding:12px;
+  box-shadow:0 12px 40px #14161920; font-size:var(--support) }
+.region-panel p+p { margin-top:6px }
+.region-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px }
+
+/* Mood atlas */
+.atlas-grid button.atlas-focus { outline:3px dashed var(--ink); outline-offset:-5px }
+.atlas-count { position:absolute; top:1px; right:2px; font-size:11px; font-weight:650; color:var(--ink); font-family:var(--mono) }
+.atlas-reading .fine-print { margin-top:6px }
+.atlas-recordings { list-style:none; padding:0; margin:4px 0 0 }
+.atlas-recordings button { font-size:var(--support); padding:4px 8px; min-height:30px; text-align:left; border:0; box-shadow:none; text-decoration:underline; background:transparent }
+
+/* Filters as a non-modal side panel */
+.filter-panel { inset:4vh auto auto 24px }
+.filter-count { font-size:12px; color:var(--signal-text); margin:-6px 0 4px }
+.mood-option { justify-content:space-between }
+.mood-option label { display:flex; align-items:center; gap:10px; min-height:40px }
+.bound-row.bound-head { margin-top:10px; font-size:12px; color:var(--muted) }
+.bound-row.bound-head+.bound-row { margin-top:4px }
+@media(max-width:600px) { .filter-panel { inset:4vh 16px auto 16px } }
+
+/* Import */
+.import-drop { border:2px dashed var(--key-border); padding:4px 14px 12px; margin:14px 0 }
+.import-drop.is-over { border-color:var(--signal); background:#F7EDE6 }
+.import-drop .import-input { margin:12px 0 6px }
+.upload-waiting { padding:12px 15px; background:#F1ECE3; margin-top:10px }
+.upload-waiting ol { margin:6px 0 0; padding-left:20px; font-size:12px }
+.upload-waiting button { margin-left:6px }
+
+/* Playlist: compact layout, locks, replacements, regeneration */
+.playlist-modes { align-items:center; justify-content:space-between; flex-wrap:wrap }
+.playlist-workspace.is-compact { gap:10px }
+.playlist-workspace.is-compact .playlist-name input { font-size:24px }
+.playlist-tracks>li { flex-wrap:wrap; row-gap:2px }
+.playlist-track-select { flex-basis:calc(100% - 60px) }
+.playlist-track-actions { flex-basis:100%; justify-content:flex-end; flex-wrap:wrap; gap:3px 10px }
+.track-action-group { display:flex; gap:3px }
+.playlist-tracks>li.is-locked { box-shadow:inset 3px 0 var(--attention) }
+.playlist-track-actions button[aria-pressed=true] { background:#FFFFFF; border-color:var(--attention); box-shadow:inset 0 -2px 0 var(--attention) }
+.regenerate-row { flex-basis:100%; display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px }
+.regenerate-row .fine-print { flex:1; min-width:200px }
+.replacements { margin-top:14px; border-top:1px solid var(--line); padding-top:8px }
+.replacements ol { list-style:none; margin:6px 0; padding:0 }
+.replacements li { display:flex; align-items:center; gap:6px; border-bottom:1px solid var(--line-soft); padding:5px 0 }
+.replacements li>span { flex:1; min-width:0; display:flex; flex-direction:column }
+.replacements strong { font-weight:600; font-size:14px; overflow-wrap:anywhere }
+.replacements small { display:flex; align-items:center; gap:5px; color:var(--muted); font-size:12px; font-family:var(--mono) }
+.replacements small i { width:7px; height:7px; border-radius:2px; display:inline-block }
+
+/* Target designer */
+.drag-axis { display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; margin-top:10px; font-size:12px; color:var(--muted) }
+.waypoint-focus { fill:var(--select) }
+.design-legend { margin-top:12px; color:var(--muted) }
+.design-legend+.design-graph { margin-top:6px }
+.waypoint-table { width:100%; border-collapse:collapse; margin:4px 0 12px; font-size:12px }
+.waypoint-table th,.waypoint-table td { text-align:left; padding:5px 6px 5px 0; border-bottom:1px solid var(--line-soft); font-weight:500 }
+.waypoint-table thead th { color:var(--muted); font-weight:700; font-stretch:75%; letter-spacing:1.2px; text-transform:uppercase }
+.waypoint-table tr.is-focused { background:var(--select) }
+.waypoint-table input { width:72px; min-height:32px; border:1px solid var(--led-off); border-radius:2px; padding:4px 6px; background:var(--readout); font-family:var(--mono) }
+.waypoint-actions { white-space:nowrap }
+.waypoint-actions button { margin-right:4px }
+.unlinked-note button { margin-left:4px }
+@media(max-width:600px) {
+  .waypoint-table input { width:58px }
+  .waypoint-actions { white-space:normal }
+}
+.lock-mark { color:var(--attention-text); font-weight:600 }
+
+/* Read-only demonstration: About panel and recording credits */
+.about-panel { width:min(560px,calc(100vw - 32px)) }
+.about-section { padding:14px 0; border-top:1px solid var(--line) }
+.about-section:first-of-type { border-top:0; padding-top:0 }
+.about-section p+p { margin-top:8px }
+.about-section h3 { margin-bottom:10px }
+.about-axes { margin:0 0 10px; display:grid; gap:6px }
+.about-axes div { display:grid; grid-template-columns:112px 1fr; gap:10px; align-items:baseline }
+.about-axes dt { font-family:var(--mono); font-size:12px; font-weight:600 }
+.about-axes .axis-R dt { color:var(--axis-R) } .about-axes .axis-T dt { color:var(--axis-T) } .about-axes .axis-P dt { color:var(--axis-P) }
+.about-axes dd { margin:0; color:var(--ink) }
+.credits { margin:10px 0 0; padding-left:28px; font-size:var(--support); display:grid; gap:5px }
+.credits li span { display:block; color:var(--muted) }
+.design-items { list-style:none; padding:0; margin:0; display:grid; gap:14px }
+.design-items img { width:100%; height:auto; border:1px solid var(--line); display:block }
+.design-items figure { margin:0 }
+.design-items figcaption { display:grid; gap:2px; margin-top:6px; font-size:var(--support) }
+.card-credit { font-size:var(--support); color:var(--muted); margin-top:4px; line-height:1.4 }
+@media(max-width:600px) { .about-axes div { grid-template-columns:1fr; gap:0 } }
