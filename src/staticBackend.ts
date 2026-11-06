@@ -14,7 +14,8 @@ export type Credit = { artist: string; source: string; source_url: string; licen
 export type AtlasFile = { scope: SceneData['scope']; method: string; slices: Record<string, AtlasData['cells']> };
 export type DataFiles = { scene: SceneData; atlas: AtlasFile };
 
-const base = () => new URL(import.meta.env.BASE_URL ?? './', document.baseURI);
+// A preview build can point data and audio at the published site (VITE_DATA_BASE) while serving new code elsewhere.
+const base = () => import.meta.env.VITE_DATA_BASE ? new URL(import.meta.env.VITE_DATA_BASE) : new URL(import.meta.env.BASE_URL ?? './', document.baseURI);
 export const dataURL = (name: string) => new URL(`data/${name}`, base()).href;
 export const audioURL = (recordingId: string) => new URL(`audio/${recordingId}.mp3`, base()).href;
 
