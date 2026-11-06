@@ -32,11 +32,11 @@ export function PlaylistTrajectory({ entries, records, selected, onSelect, playb
   const groups = useRef<(SVGGElement | null)[]>([]);
   const ticks = [...(chart.min < 1 ? [chart.min] : []), 1, 2, 3, 4, 5, ...(chart.max > 5 ? [chart.max] : [])];
   return <section className="trajectory" aria-label="Playlist perceptual trajectory">
-    <div className="trajectory-heading"><span className="eyebrow">PERCEPTUAL SEQUENCE</span>
-      <div className="trajectory-legend">{series.map(s => <span key={s.axis}><svg width="26" height="8" aria-hidden="true"><line x1="0" x2="26" y1="4" y2="4" stroke={s.color} strokeWidth="3" strokeDasharray={s.dash}/></svg>{s.name} / {s.axis}</span>)}</div></div>
-    {targets && <div className="comparison-controls" aria-label="Comparison series"><span>Compare</span>{([{ axis: 'all', name: 'All RTP' }, ...series] as const).map(s =>
-      <button key={s.axis} aria-pressed={compareAxis === s.axis} onClick={() => setCompareAxis(s.axis)}>{s.name}</button>)}<p>○ dashed: desired · ● bold: actual recordings</p></div>}
-    {entries.length === 0 ? <div className="trajectory-empty">Add a few recordings. Find a shape for your listening.</div> : <>
+    <div className="trajectory-heading"><span className="eyebrow">YOUR PLAYLIST’S PATH</span>
+      <div className="trajectory-legend">{series.map(s => <span key={s.axis}><svg width="26" height="8" aria-hidden="true"><line x1="0" x2="26" y1="4" y2="4" stroke={s.color} strokeWidth="3" strokeDasharray={s.dash}/></svg>{s.name}</span>)}</div></div>
+    {targets && <div className="comparison-controls" aria-label="Comparison series"><span>Show</span>{([{ axis: 'all', name: 'All three' }, ...series] as const).map(s =>
+      <button key={s.axis} aria-pressed={compareAxis === s.axis} onClick={() => setCompareAxis(s.axis)}>{s.name}</button>)}<p>○ dashed: the shape you asked for · ● solid: the recordings</p></div>}
+    {entries.length === 0 ? <div className="trajectory-empty">Add a few recordings and their path through Rhythm, Texture and Pitch appears here.</div> : <>
       <div ref={viewport} className="trajectory-scroll" tabIndex={0} aria-label="Ordered trajectory chart; scroll horizontally for longer playlists">
         <svg width={chart.width} height={350} role="group" aria-label="Whole-recording continuous RTP by playlist position">
           <title>Whole-recording predictions. Connecting lines guide the sequence; they do not measure changes inside songs.</title>
@@ -91,13 +91,13 @@ export function PlaylistTrajectory({ entries, records, selected, onSelect, playb
         </svg>
       </div>
       <div className="trajectory-detail" aria-live="polite"><strong>{detailIndex + 1}. {record?.title ?? detail?.title}</strong>
-        {record ? <><span>R {record.raw_rtp.R.toFixed(3)} · T {record.raw_rtp.T.toFixed(3)} · P {record.raw_rtp.P.toFixed(3)}</span>
-          {targets?.[detailIndex] && <span className="target-detail">Desired R {targets[detailIndex].R.toFixed(3)} · T {targets[detailIndex].T.toFixed(3)} · P {targets[detailIndex].P.toFixed(3)}
-            {' · '}distance {rtpDistance(record.raw_rtp, targets[detailIndex]).toFixed(3)} RTP units</span>}
-          {predictorWarnings(record) && <span className="quality-note">Input-range warning · {predictorWarnings(record)}</span>}</> : <span>Missing from this catalog · trajectory gap preserved</span>}</div>
+        {record ? <><span>R {record.raw_rtp.R.toFixed(2)} · T {record.raw_rtp.T.toFixed(2)} · P {record.raw_rtp.P.toFixed(2)}</span>
+          {targets?.[detailIndex] && <span className="target-detail">Your shape here: R {targets[detailIndex].R.toFixed(1)} · T {targets[detailIndex].T.toFixed(1)} · P {targets[detailIndex].P.toFixed(1)}
+            {' · '}{rtpDistance(record.raw_rtp, targets[detailIndex]).toFixed(2)} off</span>}
+          {predictorWarnings(record) && <span className="quality-note">Input-range warning · {predictorWarnings(record)}</span>}</> : <span>Missing from this catalog · gap kept in the path</span>}</div>
     </>}
-    <p className="trajectory-caption">Horizontal: playlist order · Vertical: original continuous RTP. Shaded column: selected · dashed cursor: {playback?.playing ? 'playing' : 'playback position'}.
+    <p className="trajectory-caption">Left to right: playlist order · Up and down: Rhythm, Texture and Pitch from 1 to 5. Shaded column: selected · dashed line: {playback?.playing ? 'playing' : 'playback position'}.
       {chart.compressed && ' Shaded outer bands use a compressed scale; the 1–5 frame is emphasized and values are unchanged.'}
-      {' '}Lines guide the sequence between whole recordings, not changes within songs.</p>
+      {' '}Each point is a whole recording; the lines only join them in order.</p>
   </section>;
 }

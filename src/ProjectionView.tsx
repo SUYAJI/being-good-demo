@@ -16,10 +16,14 @@ export function boundText([low, high]: [string, string]) {
   return low && high ? `${low}–${high}` : low ? `≥ ${low}` : high ? `≤ ${high}` : '';
 }
 
-export function ProjectionView({ records, visibleIds, selected, axes, onSelect, playing = null, paused = false, showExcluded = false, path = noPath, bounds, onFilterRegion, onAddRegion }: {
+export function ProjectionView({ records, visibleIds, selected, axes, onSelect, playing = null, paused = false, showExcluded = false, path = noPath, bounds, onFilterRegion, onAddRegion, frame = 'full', highlighted = noPath, targetPath }: {
   records: Recording[]; visibleIds: string[]; selected: string | null; axes: Projection; onSelect: (id: string) => void;
   playing?: string | null; paused?: boolean; showExcluded?: boolean; path?: string[]; bounds?: [string, string][];
   onFilterRegion?: (region: Region) => void; onAddRegion?: (ids: string[]) => void;
+  /** `music` frames the recordings that exist, with the 1–5 frame drawn where it falls; `full` shows the whole 1–5 scale. */
+  frame?: 'music' | 'full'; highlighted?: string[];
+  /** A shape being designed: drawn as a dashed route with hollow waypoints, in the same coordinates as the recordings. */
+  targetPath?: { R: number; T: number; P: number }[];
 }) {
   const buttons = useRef<(SVGGElement | null)[]>([]);
   const host = useRef<HTMLDivElement>(null), regionPanel = useRef<HTMLDivElement>(null);
@@ -41,7 +45,11 @@ export function ProjectionView({ records, visibleIds, selected, axes, onSelect, 
   const [xAxis, yAxis] = axes.split('') as Axis[];
   const hidden = (['R', 'T', 'P'] as const).find(axis => axis !== xAxis && axis !== yAxis)!;
   // Extents use the complete snapshot, so filtering never moves displayed points.
-  const extent = (axis: Axis) => [Math.min(1, ...records.map(r => r.raw_rtp[axis])), Math.max(5, ...records.map(r => r.raw_rtp[axis]))];
+  const extent = (axis: Axis) => {
+    const values = records.map(r => r.raw_rtp[axis]);
+    if (frame === 'music' && values.length) { const lo = Math.min(...values), hi = Math.max(...values), pad = Math.max(.25, (hi - lo) * .12); return [lo - pad, hi + pad]; }
+    return [Math.min(1, ...values), Math.max(5, ...values)];
+  };
   const [xmin, xmax] = extent(xAxis), [ymin, ymax] = extent(yAxis);
   const unit = Math.min(Math.max(1, size.width - 100) / (xmax - xmin), Math.max(1, size.height - 110) / (ymax - ymin));
   const center = { x: (size.width + 26) / 2, y: (size.height - 40) / 2 };
@@ -84,7 +92,8 @@ export function ProjectionView({ records, visibleIds, selected, axes, onSelect, 
     pathNumbers.set(key, { x: p.x, y: p.y, text: [...pathNumbers.get(key)?.text ?? [], String(index + 1)] }); });
   const hiddenBound = bounds ? boundText(bounds[axisIndex[hidden]]) : '';
   const brushRect = brush && { x: Math.min(brush.x0, brush.x1), y: Math.min(brush.y0, brush.y1), width: Math.abs(brush.x1 - brush.x0), height: Math.abs(brush.y1 - brush.y0) };
-  const half = Array.from({ length: 9 }, (_, i) => 1 + i / 2);
+  const half = Array.from({ length: Math.max(0, Math.ceil(Math.max(xmax, ymax) * 2) - Math.floor(Math.min(xmin, ymin) * 2) + 1) }, (_, i) => Math.floor(Math.min(xmin, ymin) * 2) / 2 + i / 2)
+    .filter(tick => (tick >= xmin && tick <= xmax) || (tick >= ymin && tick <= ymax));
   const sx = (value: number) => center.x + (value - (xmin + xmax) / 2) * unit, sy = (value: number) => center.y - (value - (ymin + ymax) / 2) * unit;
   const numberOf = (id: string) => String(records.findIndex(r => r.recording_id === id) + 1).padStart(2, '0');
   const selectedRecord = shown.find(record => record.recording_id === selected);
@@ -110,12 +119,12 @@ export function ProjectionView({ records, visibleIds, selected, axes, onSelect, 
       {half.map(tick => {
         const x = sx(tick), y = sy(tick), major = Number.isInteger(tick);
         return <g key={tick} className={`projection-grid${major ? ' is-major' : ''}`}><line x1={x} x2={x} y1={35} y2={size.height - 65}/><line y1={y} y2={y} x1={50} x2={size.width - 24}/>
-          {major && <><text className="projection-tick" x={x} y={size.height - 46} textAnchor="middle">{tick}</text><text className="projection-tick" x={36} y={y + 4} textAnchor="end">{tick}</text></>}</g>;
+          {major && <>{tick >= xmin && tick <= xmax && <text className="projection-tick" x={x} y={size.height - 46} textAnchor="middle">{tick}</text>}{tick >= ymin && tick <= ymax && <text className="projection-tick" x={36} y={y + 4} textAnchor="end">{tick}</text>}</>}</g>;
       })}
       <text className={`projection-axis axis-${xAxis}`} x={center.x} y={size.height - 16} textAnchor="middle">{xAxis} · {names[xAxis].toUpperCase()} →</text>
       <text className={`projection-axis axis-${yAxis}`} x={50} y={20}>↑ {yAxis} · {names[yAxis].toUpperCase()}</text>
-      <text className="projection-note" x={size.width - 24} y={20} textAnchor="end">Raw RTP · equal units · shaded = 1–5 frame</text>
-      <text className="projection-hidden-axis" x={size.width - 24} y={38} textAnchor="end">{names[hidden]} not plotted · {hiddenBound ? `filtered ${hiddenBound}` : `any ${names[hidden]} value`}</text>
+      {size.width >= 520 && <text className="projection-note" x={size.width - 24} y={20} textAnchor="end">{frame === 'music' ? 'Zoomed to the music · shaded area is the full 1–5 range' : 'Full 1–5 scale'}</text>}
+      {size.width >= 520 && <text className="projection-hidden-axis" x={size.width - 24} y={38} textAnchor="end">{names[hidden]} not shown here{hiddenBound ? ` · filtered ${hiddenBound}` : ''}</text>}
       {(xmin < 1 || xmax > 5 || ymin < 1 || ymax > 5) && <text className="projection-outlier-note" x={50} y={size.height - 70}>Out-of-frame values retained</text>}
       {showExcluded && records.filter(r => !included.has(r.recording_id)).map(record => { const p = project(record);
         return <circle key={record.recording_id} className="projection-ghost" cx={p.x} cy={p.y} r={3.5} pointerEvents="none"/>; })}
@@ -136,12 +145,17 @@ export function ProjectionView({ records, visibleIds, selected, axes, onSelect, 
         <title>{record.title} · {record.mood.label}</title><circle cx={p.x} cy={p.y} r={12} fill="transparent"/>
         <circle className="projection-point" cx={p.x} cy={p.y} r={6} fill={colorOf(record)}/>
         {selected === record.recording_id && <circle className="projection-selected" cx={p.x} cy={p.y} r={11}/>}
+        {highlighted.includes(record.recording_id) && selected !== record.recording_id && <circle className="projection-neighbor" cx={p.x} cy={p.y} r={10}/>}
         {hover === record.recording_id && selected !== record.recording_id && <circle className="projection-hover" cx={p.x} cy={p.y} r={10}/>}
       </g>; })}
       {playingRecord && (() => { const p = project(playingRecord); return <g className={`projection-playing${paused ? ' is-paused' : ''}`} data-playing-recording={playingRecord.recording_id} pointerEvents="none">
         <circle cx={p.x} cy={p.y} r={16}/></g>; })()}
       {callout && <g className="callout-leader" pointerEvents="none"><line x1={callout.place.startX} y1={callout.place.startY} x2={callout.place.anchorX} y2={callout.place.anchorY}/>
         <circle cx={callout.place.anchorX} cy={callout.place.anchorY} r={2.5}/></g>}
+      {targetPath && targetPath.length > 1 && <g className="projection-target" pointerEvents="none" aria-hidden="true">
+        <polyline points={targetPath.map(point => `${sx(point[xAxis])},${sy(point[yAxis])}`).join(' ')}/>
+        {targetPath.map((point, index) => <g key={index}><circle cx={sx(point[xAxis])} cy={sy(point[yAxis])} r={8}/>
+          <text x={sx(point[xAxis])} y={sy(point[yAxis]) - 13} textAnchor="middle">{index === 0 ? 'START' : index === targetPath.length - 1 ? 'END' : index + 1}</text></g>)}</g>}
       {brushRect && <rect className="projection-brush" {...brushRect} pointerEvents="none"/>}
     </svg>
     {pathLabels.map(({ lx, ly, text }) => <span key={`${lx},${ly}`} className="path-number" aria-hidden="true" style={{ left: lx, top: ly }}>{text.join(' · ')}</span>)}
@@ -150,7 +164,7 @@ export function ProjectionView({ records, visibleIds, selected, axes, onSelect, 
     {hovered && hoverPosition && <div className="point-readout" role="presentation" style={{ left: Math.min(hoverPosition.x + 16, size.width - 260), top: Math.max(8, hoverPosition.y - 82) }}>
       <strong>{hovered.title}</strong>
       <span className="mono">{xAxis} {hovered.raw_rtp[xAxis].toFixed(2)} · {yAxis} {hovered.raw_rtp[yAxis].toFixed(2)} · {hidden} {hovered.raw_rtp[hidden].toFixed(2)} (not plotted)</span>
-      <span><i style={{ background: colorOf(hovered) }}/>{hovered.mood.label} · historical</span>
+      <span><i style={{ background: colorOf(hovered) }}/>{hovered.mood.label}</span>
       {hoverCluster > 0 && <span>+{hoverCluster} more here · click to choose</span>}</div>}
     {overlap && overlap.ids.length > 1 && <OverlapPicker ids={overlap.ids} records={records} at={overlap} onClose={() => closeChooser()}
       onChoose={id => { onSelect(id); closeChooser(id); }}/>}
@@ -158,9 +172,8 @@ export function ProjectionView({ records, visibleIds, selected, axes, onSelect, 
       style={{ left: Math.max(8, Math.min(brushRect.x + brushRect.width + 10, size.width - 330)), top: Math.max(8, Math.min(brushRect.y, size.height - 250)) }}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setBrush(null); } }}>
       <p><strong>{names[xAxis]} {region.value[xAxis]![0].toFixed(2)}–{region.value[xAxis]![1].toFixed(2)} · {names[yAxis]} {region.value[yAxis]![0].toFixed(2)}–{region.value[yAxis]![1].toFixed(2)}</strong></p>
-      <p className="fine-print">{region.inside.length} of the {shown.length} recordings in this view fall inside. {names[hidden]} is not plotted: {hiddenBound ? `its filter ${hiddenBound} stays` : 'any value is included'}.
-        Filtering replaces only the {names[xAxis]} and {names[yAxis]} ranges; moods, intensity and search still apply.</p>
-      <div className="region-actions"><button className="primary" onClick={() => { onFilterRegion?.(region.value); setBrush(null); }}>Filter to region</button>
+      <p className="fine-print">{region.inside.length} of the {shown.length} recordings in this view fall inside.</p>
+      <div className="region-actions"><button className="primary" onClick={() => { onFilterRegion?.(region.value); setBrush(null); }}>Show only this region</button>
         {onAddRegion && <button disabled={!region.inside.length} onClick={() => { onAddRegion(region.inside.map(r => r.recording_id)); setBrush(null); }}>Add {region.inside.length} to playlist</button>}
         <button onClick={() => setBrush(null)}>Cancel</button></div></div>}
   </div>;

@@ -8,5 +8,6 @@ import '@fontsource/ibm-plex-mono/600.css';
 import './style.css';
 import './playlist.css';
 import './interaction.css';
+import './guided.css';
 
 createRoot(document.getElementById('root')!).render(<App/>);

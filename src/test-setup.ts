@@ -8,3 +8,6 @@ setTransport(async (path, init) => {
   if (!response.ok) { const body = await response.json().catch(() => ({})); throw new BackendError(body.error?.code ?? 'request_failed', response.status); }
   return response.json();
 });
+
+// Tests open straight onto the working interface; the start-up mark and welcome have their own tests.
+if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('being-good-demo.stage', 'app');

@@ -105,7 +105,7 @@ test('explicit playlist transport advances duplicate occurrences and ignores lat
   await act(async () => fireEvent.ended(audio));
   expect(audio.src).toContain(a.recording_id); expect(audio.currentTime).toBe(0);
   expect(playback).toHaveBeenLastCalledWith({ recording_id: a.recording_id, entry_id: '2', playing: false, finished: false });
-  expect(screen.getByText(/2 \/ 3 · captured order/)).toBeTruthy();
+  expect(screen.getByText(/2 \/ 3$/)).toBeTruthy();
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Next playlist track' })));
   expect(audio.src).toContain(b.recording_id);
   expect(playback).toHaveBeenLastCalledWith({ recording_id: b.recording_id, entry_id: '3', playing: false, finished: false });
@@ -118,7 +118,7 @@ test('selected and captured playing occurrences remain distinct through drag reo
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ playlists: [], recipes: [] }) })));
   const ref = createRef<PlaylistHandle>(), a = record('a');
   const view = render(<PlaylistWorkspace ref={ref} records={[a]} onSelect={vi.fn()} onListen={vi.fn()} onPlay={vi.fn()}/>);
-  await screen.findByRole('option', { name: 'Choose a saved playlist…' });
+  await screen.findByRole('option', { name: 'Nothing saved yet' });
   act(() => ref.current!.add([a, a]));
   const list = screen.getByRole('list', { name: 'Playlist recordings' });
   const firstId = list.children[0].getAttribute('data-entry-id')!;

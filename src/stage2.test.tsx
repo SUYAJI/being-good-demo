@@ -85,7 +85,7 @@ test('meters show exact raw values and historical half-points; intensity fills o
     previousAnchor={null} onNeighbors={vi.fn()} onBack={vi.fn()} onHide={vi.fn()} onAtlas={vi.fn()} onListen={vi.fn()} onPause={vi.fn()} onResume={vi.fn()}/>);
   expect(screen.getByRole('img', { name: 'Rhythm raw 1.91, historical half-point 2.0' })).toBeTruthy();
   expect(screen.getByRole('img', { name: 'Pitch raw 1.62, historical half-point 1.5' })).toBeTruthy();
-  expect(screen.getByText('lookup cell 2.0 / 4.0 / 1.5')).toBeTruthy();
+  expect(screen.getByText('cell 2.0 / 4.0 / 1.5')).toBeTruthy();
   const circles = [...screen.getByRole('img', { name: 'Geometric intensity 5.6 on a continuous 0 to 10 scale' }).querySelectorAll('i')].map(i => Number(i.dataset.fill));
   expect(circles.slice(0, 5)).toEqual([1, 1, 1, 1, 1]); expect(circles[5]).toBeCloseTo(.6); expect(circles.slice(6)).toEqual([0, 0, 0, 0]);
   cleanup(); render(<IntensityCircles value={null}/>); expect(screen.getByText('Unavailable')).toBeTruthy();
@@ -105,24 +105,29 @@ test('inspector and dock share one playback state: Listen, Pause, Resume, and Li
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Resume Invented a' })));
   expect(audio.src).toBe(source); expect(audio.paused).toBe(false);
   expect(screen.getByRole('button', { name: 'Pause playback' })).toBeTruthy();
-  // Another selected recording offers Listen, which switches the source; selection alone never does.
-  fireEvent.click(list.getAllByRole('button', { name: /Invented c/ })[0]);
-  expect(screen.getByRole('button', { name: 'Listen to Invented c' })).toBeTruthy(); expect(audio.src).toBe(source);
-  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Listen to Invented c' })));
+  // While listening, choosing another recording moves the listening along with the selection.
+  await act(async () => fireEvent.click(list.getAllByRole('button', { name: /Invented c/ })[0]));
   expect(audio.src).toContain('c'.repeat(64)); expect(screen.getByRole('button', { name: 'Pause Invented c' })).toBeTruthy();
+  // Paused, selection alone never switches the source; Listen does.
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Pause playback' })));
+  const paused = audio.src;
+  fireEvent.click(list.getAllByRole('button', { name: /Invented a/ })[0]);
+  expect(screen.getByRole('button', { name: 'Listen to Invented a' })).toBeTruthy(); expect(audio.src).toBe(paused);
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Listen to Invented a' })));
+  expect(audio.src).toBe(source); expect(screen.getByRole('button', { name: 'Pause Invented a' })).toBeTruthy();
 });
 
 test('the playlist path appears only with a playlist and PATH on, and explains what numbers and lines mean', async () => {
   await start();
   const path = () => screen.getByRole('button', { name: 'Playlist path' });
   expect(path().hasAttribute('disabled')).toBe(true); expect(screen.queryByRole('note', { name: 'Playlist path legend' })).toBeNull();
-  expect(document.getElementById(path().getAttribute('aria-describedby')!)!.textContent).toMatch(/add recordings to a playlist/);
+  expect(document.getElementById(path().getAttribute('aria-describedby')!)!.textContent).toMatch(/once a playlist has recordings/);
   fireEvent.click(screen.getByRole('button', { name: 'Add Invented b to playlist' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add Invented a to playlist' }));
   const legend = screen.getByRole('note', { name: 'Playlist path legend' });
-  expect(legend.textContent).toMatch(/Numbers are playlist positions; lines join successive recordings in playlist order/);
-  expect(legend.textContent).toMatch(/not a measure of similarity/);
-  expect(document.getElementById(path().getAttribute('aria-describedby')!)!.textContent).toMatch(/a line does not mean two recordings sound alike/);
+  expect(legend.textContent).toMatch(/Numbers are playlist positions; lines join the recordings in order/);
+  expect(legend.textContent).toMatch(/join the recordings in order/);
+  expect(document.getElementById(path().getAttribute('aria-describedby')!)!.textContent).toMatch(/lines join the recordings in order/);
   expect([...document.querySelectorAll('.projection-view .path-number')].map(n => n.textContent)).toEqual(['1', '2']);
   expect(document.querySelectorAll('.projection-path line')).toHaveLength(1);
   fireEvent.click(path());

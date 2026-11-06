@@ -32,15 +32,15 @@ test('auditioning sets the playlist aside and Return resumes the same occurrence
   mediaMocks(); const ref = createRef<PlayerHandle>(), [a, b, c] = ['a', 'b', 'c'].map(record);
   const view = render(<ListeningDock ref={ref} analyze={async () => waveform(null)}/>), audio = view.container.querySelector('audio')!;
   await act(async () => ref.current!.playPlaylist('Invented queue', [{ entry_id: '1', recording: a }, { entry_id: '2', recording: b }], 1));
-  expect(audio.src).toContain(b.recording_id); expect(screen.getByText(/2 \/ 2 · captured order/)).toBeTruthy();
+  expect(audio.src).toContain(b.recording_id); expect(screen.getByText(/2 \/ 2$/)).toBeTruthy();
   audio.currentTime = 30;
   await act(async () => ref.current!.listen(c));
   expect(screen.queryByRole('button', { name: 'Next playlist track' })).toBeNull();
-  expect(screen.getByText(/set aside at 2 \/ 2, 0:30/)).toBeTruthy();
+  expect(screen.getByText(/paused at 2 \/ 2, 0:30/)).toBeTruthy();
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Return to playlist' })));
   expect(audio.src).toContain(b.recording_id);
   fireEvent.loadedMetadata(audio); expect(audio.currentTime).toBe(30);
-  expect(screen.getByText(/2 \/ 2 · captured order/)).toBeTruthy();
+  expect(screen.getByText(/2 \/ 2$/)).toBeTruthy();
 });
 
 test('the waveform draws real peaks, clicking seeks, and the title locates the recording', async () => {

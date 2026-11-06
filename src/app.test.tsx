@@ -39,15 +39,15 @@ async function start() {
 test('neighbors stay anchored while following one, and Back returns to the earlier neighborhood', async () => {
   const list = await start();
   fireEvent.click(list.getAllByRole('button', { name: /Invented a/ })[0]);
-  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Geometric neighbors' })));
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Explore nearby music' })));
   const panel = () => screen.getByRole('region', { name: 'Geometric neighbors' });
   fireEvent.click(within(panel()).getByRole('button', { name: /Invented c/ }));
-  expect(panel().textContent).toContain('Neighbors of Invented a');
+  expect(panel().textContent).toContain('Nearest to Invented a');
   expect(within(panel()).getByRole('button', { name: /^Invented c/ }).getAttribute('aria-current')).toBe('true');
-  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Re-centre on Invented c' })));
-  expect(panel().textContent).toContain('Neighbors of Invented c');
-  await act(async () => fireEvent.click(screen.getByRole('button', { name: '← Back to neighbors of Invented a' })));
-  expect(panel().textContent).toContain('Neighbors of Invented a'); expect(nearest).toEqual(['a'.repeat(64), 'c'.repeat(64), 'a'.repeat(64)]);
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Nearby Invented c' })));
+  expect(panel().textContent).toContain('Nearest to Invented c');
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: '← Back to Invented a' })));
+  expect(panel().textContent).toContain('Nearest to Invented a'); expect(nearest).toEqual(['a'.repeat(64), 'c'.repeat(64), 'a'.repeat(64)]);
 });
 
 test('adding stays in the field with undo, and unsaved playlists guard against closing', async () => {
@@ -55,10 +55,10 @@ test('adding stays in the field with undo, and unsaved playlists guard against c
   fireEvent.click(screen.getByRole('button', { name: 'Add Invented b to playlist' }));
   expect(document.querySelector('.projection-view svg')!.getAttribute('aria-label')).toMatch(/Continuous R–T projection/);
   expect(screen.getByText('Added 1 recording to “Untitled playlist”')).toBeTruthy();
-  expect(screen.getByRole('button', { name: /^Playlist · 1/ })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Playlist Designer · 1/ })).toBeTruthy();
   const leaving = new Event('beforeunload', { cancelable: true }); dispatchEvent(leaving); expect(leaving.defaultPrevented).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Playlist' })).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Playlist Designer' })).toBeTruthy());
   const after = new Event('beforeunload', { cancelable: true }); dispatchEvent(after); expect(after.defaultPrevented).toBe(false);
   expect(screen.queryByRole('button', { name: /Add 3 results/ })).toBeNull(); expect(list.getAllByRole('listitem')).toHaveLength(3);
 });

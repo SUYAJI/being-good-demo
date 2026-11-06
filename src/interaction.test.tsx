@@ -41,9 +41,9 @@ test('locked positions survive regeneration; unlocked ones refill without repeat
   const { order } = await openWorkspace(savedPlaylist([five[4], five[1], five[0]], target));
   fireEvent.click(screen.getByRole('button', { name: 'Lock position 1' }));
   expect(screen.getByRole('button', { name: 'Remove playlist track 1' }).hasAttribute('disabled')).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Regenerate unlocked positions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Try different recordings' }));
   expect(order()).toEqual([five[4], five[2], five[3]].map(r => r.recording_id));
-  expect(screen.getByText(/Regenerated 2 unlocked positions · 1 locked position kept/)).toBeTruthy();
+  expect(screen.getByText(/Swapped 2 recordings · 1 kept recording stayed/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Undo playlist edit' }));
   expect(order()).toEqual([five[4], five[1], five[0]].map(r => r.recording_id));
 });
@@ -56,7 +56,7 @@ test('Play from here starts at that occurrence; replacements rank by distance to
   fireEvent.click(screen.getAllByRole('button', { name: /Synthetic e/ })[0]);
   const candidates = within(screen.getByRole('region', { name: 'Replacements for position 2' })).getAllByRole('listitem');
   // Position 2 of 3 desires R = 3, so the nearest candidates are c (0), then b and d (1).
-  expect(candidates[0].textContent).toMatch(/Synthetic c.*0\.000 RTP units · already in playlist/);
+  expect(candidates[0].textContent).toMatch(/Synthetic c.*already in playlist/);
   expect(candidates.slice(1, 3).map(item => item.querySelector('strong')!.textContent)).toEqual(['Synthetic b', 'Synthetic d']);
 });
 
@@ -77,14 +77,14 @@ test('a 2D region becomes outward-rounded bounds on the plotted axes and names t
   const records = [record('a', 3, 3), record('b', 5, 5)], filter = vi.fn(), add = vi.fn();
   const view = render(<ProjectionView records={records} visibleIds={records.map(r => r.recording_id)} selected={null} axes="RT" onSelect={vi.fn()}
     bounds={[['', ''], ['', ''], ['2', '']]} onFilterRegion={filter} onAddRegion={add}/>);
-  expect(screen.getByText('Pitch not plotted · filtered ≥ 2')).toBeTruthy();
+  expect(screen.getByText('Pitch not shown here · filtered ≥ 2')).toBeTruthy();
   const svg = view.container.querySelector('svg')!;
   fireEvent.pointerDown(svg, { clientX: 190, clientY: 158, button: 0, pointerId: 1 });
   fireEvent.pointerMove(svg, { clientX: 436, clientY: 403, pointerId: 1 });
   fireEvent.pointerUp(svg, { clientX: 436, clientY: 403, pointerId: 1 });
   const panel = screen.getByRole('group', { name: 'Selected region' });
-  expect(panel.textContent).toContain('1 of the 2 recordings'); expect(panel.textContent).toContain('its filter ≥ 2 stays');
-  fireEvent.click(screen.getByRole('button', { name: 'Filter to region' }));
+  expect(panel.textContent).toContain('1 of the 2 recordings');
+  fireEvent.click(screen.getByRole('button', { name: 'Show only this region' }));
   const region = filter.mock.calls[0][0];
   expect(Object.keys(region).sort()).toEqual(['R', 'T']);
   expect(region.R[0]).toBeLessThanOrEqual(2); expect(region.R[1]).toBeGreaterThanOrEqual(4);

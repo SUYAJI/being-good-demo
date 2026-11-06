@@ -207,9 +207,9 @@ export const ListeningDock = forwardRef<PlayerHandle, { visibleIds?: string[]; o
         {recording ? <span className="playing-mood"><i style={{ background: colorOf(recording) }}/>{recording.mood.label} · {timeLabel(recording.duration_seconds)}
           {outside && <span className="fine-print">Outside current view · {playing ? 'still playing' : finished ? 'finished' : 'paused'}</span>}</span> :
           <span className="playing-mood">Select a recording, then Listen</span>}
-        {sequence && <span className="queue-context" title="Order captured when Play playlist was pressed; edits do not interrupt playback.">
-          {sequence.name} · {sequence.index + 1} / {sequence.entries.length} · captured order</span>}
-        {suspended && !sequence && <span className="queue-context">Auditioning · {suspended.name} set aside at {suspended.index + 1} / {suspended.entries.length}, {timeLabel(suspended.time)}
+        {sequence && <span className="queue-context" title="Playing the order as it was when you pressed Play; edits do not interrupt playback.">
+          {sequence.name} · {sequence.index + 1} / {sequence.entries.length}</span>}
+        {suspended && !sequence && <span className="queue-context">Listening on its own · {suspended.name} paused at {suspended.index + 1} / {suspended.entries.length}, {timeLabel(suspended.time)}
           {' '}<button className="return-to-playlist key key-small" onClick={returnToPlaylist}>Return to playlist</button></span>}
       </div>
       {recording ? <div className="seek-control">

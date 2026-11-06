@@ -1,12 +1,21 @@
-# Being Good Explorer — read-only demonstration
+# Being Good Explorer — demonstration
 
-An interactive, read-only version of the Being Good Explorer, hosted on GitHub Pages.
+An interactive version of the Being Good Explorer, hosted on GitHub Pages.
 
 Being Good places music in a shared space of three perceptual scores: Rhythm,
-Texture and Pitch (RTP). Each axis runs from 1 to 5. This site lets you move
-through that space with real recordings: orbit the 3D field, read the 2D
-projections, inspect a recording's raw position and historical mood, follow
-geometric neighbors, browse the mood atlas, listen, and arrange playlists.
+Texture and Pitch (RTP). Each axis runs from 1 to 5. The Explorer opens with a
+welcome and a **Playlist Designer**: choose where a playlist begins (a mood, a
+recording, or anywhere), choose how it moves (a preset shape, a journey between
+two recordings, or a hand-drawn shape), and the Explorer picks real recordings
+along that path. You can then listen, keep or swap recordings, reorder, and save
+the playlist in your browser. **Explore** mode keeps the open-ended tools: the
+2D projections (zoomed to the music by default, with the full 1–5 scale one key
+away), the 3D field, nearby music, the mood atlas, filters and the listening
+dock. **How it works** explains RTP with real examples; recording credits have
+their own view.
+
+Nothing is analyzed in the browser: every position comes from the original
+pipeline, and the designer is arithmetic over those published values.
 
 ## What is real here
 
@@ -33,7 +42,7 @@ the private engine.
 |---|---|
 | Loopback server with a private library | Static JSON prepared offline |
 | Add MP3 imports and analysis | Not available |
-| Playlists and journey targets saved in a private database | Saved only in this browser (localStorage) |
+| Playlists saved in a private database | Saved only in this browser (localStorage) |
 | Filters and neighbors computed by the server | Same arithmetic in the browser over the published values |
 | Mood atlas from the private mood map | The same 729 published lookup cells |
 
