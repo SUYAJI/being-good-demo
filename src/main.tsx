@@ -9,5 +9,6 @@ import './style.css';
 import './playlist.css';
 import './interaction.css';
 import './guided.css';
+import './stage.css';
 
 createRoot(document.getElementById('root')!).render(<App/>);

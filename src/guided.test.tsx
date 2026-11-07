@@ -91,22 +91,37 @@ test('start from a mood, pick a shape, create, swap a recording, save, and the p
   expect(screen.getByRole('heading', { name: 'Where should your playlist begin?' })).toBeTruthy();
 });
 
-test('a journey between two recordings starts from the selected recording and ends at the chosen one', async () => {
+test('a journey between two recordings starts from the selected recording and ends at one found in the designer', async () => {
   const { default: App } = await import('./App');
   render(<App/>);
   const list = within(await screen.findByRole('list', { name: 'Recordings' }));
+  // A recording selected in the Explorer is offered as the start.
   fireEvent.click(list.getAllByRole('button', { name: /Invented h/ })[0]);
   fireEvent.click(screen.getByRole('button', { name: 'Playlist Designer' }));
-  fireEvent.click(screen.getByRole('button', { name: /Invented h.*selected in the Explorer/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Invented h.*selected · start here/ }));
+  expect(screen.getByRole('button', { name: /Invented h.*the playlist starts here/ })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Choose a shape →' }));
   fireEvent.click(screen.getByRole('radio', { name: /Between two recordings/ }));
   expect(screen.getByRole('button', { name: 'Create playlist' }).hasAttribute('disabled')).toBe(true);
-  fireEvent.click(list.getAllByRole('button', { name: /Invented a/ })[0]);
-  fireEvent.click(screen.getByRole('button', { name: 'End at “Invented a”' }));
+  // The ending is found by name without leaving the designer.
+  fireEvent.change(screen.getByLabelText('Find the recording to end at'), { target: { value: 'invented a' } });
+  fireEvent.click(within(screen.getByRole('list', { name: 'Find the recording to end at: results' })).getByRole('button', { name: /Invented a/ }));
+  expect(screen.getByText(/Ends at/).textContent).toContain('Invented a');
   fireEvent.click(screen.getByRole('button', { name: 'Create playlist' }));
   const titles = within(screen.getByRole('list', { name: 'Playlist recordings' })).getAllByRole('listitem').map(item => item.querySelector('strong')!.textContent);
   expect(titles[0]).toContain('Invented h'); expect(titles.at(-1)).toContain('Invented a');
   expect(titles[0]).toContain('Kept'); expect(titles.at(-1)).toContain('Kept');
+});
+
+test('a recording found by name becomes the start without visiting the Explorer', async () => {
+  const { default: App } = await import('./App');
+  render(<App/>);
+  await screen.findByRole('list', { name: 'Recordings' });
+  fireEvent.click(screen.getByRole('button', { name: 'Playlist Designer' }));
+  fireEvent.change(screen.getByLabelText('Find a recording to start from'), { target: { value: 'invented c' } });
+  fireEvent.click(within(screen.getByRole('list', { name: 'Find a recording to start from: results' })).getByRole('button', { name: /Invented c/ }));
+  expect(screen.getByRole('button', { name: /Invented c.*the playlist starts here/ })).toBeTruthy();
+  expect(screen.getByText(/Starting from Invented c/)).toBeTruthy();
 });
 
 test('the field opens zoomed to the music, with the full scale one key away', async () => {

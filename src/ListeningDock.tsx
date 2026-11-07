@@ -6,7 +6,9 @@ import { audioURL } from './staticBackend';
 
 /** listen switches the source; pause and resume act on the loaded recording only. */
 export type PlayerHandle = { listen: (recording: Recording) => void; playPlaylist: (name: string, entries: QueueEntry[], start?: number) => void;
-  pause: () => void; resume: () => void };
+  pause: () => void; resume: () => void;
+  /** The loaded recording's real position and its decoded peak envelope, read by the stage while it draws playback. */
+  clock: () => { time: number; duration: number; peaks: number[] | null } | null };
 type Sequence = { name: string; entries: QueueEntry[]; index: number };
 const preference = 'bg.audition-start';
 
@@ -69,6 +71,7 @@ export const ListeningDock = forwardRef<PlayerHandle, { visibleIds?: string[]; o
   // Auditioning one recording sets the playlist aside instead of discarding its place.
   const [suspended, setSuspended] = useState<(Sequence & { time: number }) | null>(null);
   const [waveform, setWaveform] = useState<{ id: string; data: WaveformData | null; status: 'loading' | 'ready' | 'failed' } | null>(null);
+  const waveformRef = useRef(waveform); waveformRef.current = waveform;
   const [starts, setStarts] = useState<Record<string, number>>({});
   const [autoStart, setAutoStart] = useState(() => { try { return localStorage.getItem(preference) === 'on'; } catch { return false; } });
   const pendingSeek = useRef<number | null>(null), awaitingSuggestion = useRef<string | null>(null), userSeeked = useRef(false);
@@ -146,6 +149,12 @@ export const ListeningDock = forwardRef<PlayerHandle, { visibleIds?: string[]; o
       setSuspended(null); updateSequence({ name, entries: [...entries], index }); start(entries[index].recording, true);
     },
     pause, resume,
+    clock: () => {
+      const element = audio.current, id = active.current;
+      if (!element || !id) return null;
+      const length = Number.isFinite(element.duration) ? element.duration : 0, wave = waveformRef.current;
+      return { time: element.currentTime, duration: length, peaks: wave?.id === id ? wave.data?.peaks ?? null : null };
+    },
   }));
   const returnToPlaylist = () => {
     if (!suspended) return;

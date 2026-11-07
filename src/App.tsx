@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { APIError, bootstrap, postJSON, readJSON } from './api';
 import { colorOf, moodColors, timeLabel, type SceneData, type Recording, type RTP } from './types';
 import { SpatialScene, type SceneHandle, type CameraCommand, type CameraState } from './SpatialScene';
@@ -11,7 +11,12 @@ import { PlaylistWorkspace, type PlaylistHandle, type WorkspaceSummary } from '.
 import { RecordingCard, type Neighborhood } from './RecordingCard';
 import { PlaylistDesigner, type Created, type Step, type Suggestion } from './PlaylistDesigner';
 import { Intro, Welcome } from './Welcome';
-import { rtpDistance } from './trajectoryDesign';
+import { compareSequence, rtpDistance } from './trajectoryDesign';
+import { planJourney, presetWaypoints, startPoint } from './journeyDesign';
+import { JourneyStage, type StageHandle } from './stage/JourneyStage';
+import { StageHud } from './stage/StageHud';
+import { stageView, type DesignerReport, type PreviewJourney } from './stage/stageView';
+import type { StagePlayback } from './stage/StageRenderer';
 import type { PlaybackPosition } from './playlists';
 
 export type SortKey = 'collection' | 'title' | 'mood' | 'R' | 'T' | 'P' | 'intensity' | 'duration' | 'distance';
@@ -69,6 +74,17 @@ function useMedia(query: string) {
   }, [query]);
   return matches;
 }
+/** Width of an element as laid out, following resizes; 0 while it is hidden or absent. */
+function useWidth(target: React.RefObject<HTMLElement | null>, active: boolean) {
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = target.current;
+    if (!active || !element || typeof ResizeObserver === 'undefined') { setWidth(0); return; }
+    const observer = new ResizeObserver(() => setWidth(element.offsetWidth)); observer.observe(element); setWidth(element.offsetWidth);
+    return () => observer.disconnect();
+  }, [target, active]);
+  return width;
+}
 type Layout = 'field' | 'beside';
 type Stage = 'intro' | 'welcome' | 'app';
 type Mode = 'explore' | 'design';
@@ -84,7 +100,12 @@ export default function App() {
   const [mode, setMode] = useState<Mode>(() => remembered(modeKey) === 'design' ? 'design' : 'explore');
   const [step, setStep] = useState<Step>('start');
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
-  const [shape, setShape] = useState<RTP[] | null>(null);
+  const [report, setReport] = useState<DesignerReport | null>(null);
+  const [previewing, setPreviewing] = useState<Suggestion | null>(null);
+  const [revealKey, setRevealKey] = useState(0), [revealPhase, setRevealPhase] = useState<'searching' | 'done' | null>(null);
+  const [peek, setPeek] = useState<string | null>(null), [cardFor, setCardFor] = useState<string | null>(null);
+  const stageRef = useRef<StageHandle>(null), welcomeBox = useRef<HTMLDivElement>(null), asideBox = useRef<HTMLElement>(null);
+  const wide = useMedia('(min-width: 761px)'), reduced = useMedia('(prefers-reduced-motion: reduce)');
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState(clearFilters);
@@ -187,7 +208,7 @@ export default function App() {
       { label: 'Undo', run: () => playlist.current?.remove(ids) },
       ...(layout === 'field' ? [{ label: 'Show playlist', run: () => openDesigner('playlist') }] : [])] });
   };
-  const created = (value: Created) => { playlist.current?.create(value); setShowPath(true); };
+  const created = (value: Created) => { setRevealKey(key => key + 1); playlist.current?.create(value); setShowPath(true); };
   const saved = () => notify({ message: `“${workspace.name}” is saved in this browser.`, actions: [
     { label: 'Make another', run: () => openDesigner('start') }, { label: 'Explore the music', run: openExplorer }] });
   const filterRegion = (region: Region) => setFilters(current => ({ ...current,
@@ -235,6 +256,54 @@ export default function App() {
   const cameraKeys = <CameraKeys selected={!!selected} onCommand={command}/>;
   const entryCount = workspace.entries.length;
   const designerLabel = `Playlist Designer${entryCount ? ` · ${entryCount}` : ''}`;
+  // The stage: the collection in perspective for the welcome and the guided journey. The Explorer keeps its precise 2D and 3D instruments.
+  const staging = stage === 'welcome' || mode === 'design';
+  const designReport = stage === 'app' && mode === 'design' ? report : null;
+  const shape = designReport?.step === 'shape' ? designReport.waypoints : null;
+  const welcomeWidth = useWidth(welcomeBox, wide && stage === 'welcome'), asideWidth = useWidth(asideBox, wide && staging && stage === 'app');
+  const insets = useMemo(() => !wide ? { left: 0, right: 0 } : stage === 'welcome' ? { left: welcomeWidth, right: 0 } : { left: 0, right: asideWidth }, [wide, stage, welcomeWidth, asideWidth]);
+  const previewJourney = useMemo<PreviewJourney | null>(() => {
+    if (!previewing || !data) return null;
+    const origin = startPoint(previewing.start, data.records, categories); if (!origin) return null;
+    const end = previewing.endId ? data.records.find(r => r.recording_id === previewing.endId)?.raw_rtp ?? null : null;
+    const waypoints = presetWaypoints(previewing.preset, origin, end);
+    // Exactly the playlist the suggestion creates: same waypoints, length and pinned first and last recordings.
+    const result = planJourney(data.records, { waypoints, length: previewing.length, firstId: previewing.start.kind === 'recording' ? previewing.start.id : null,
+      lastId: previewing.preset === 'between' ? previewing.endId : null });
+    return { waypoints, ids: result.recordings.map(r => r.recording_id) };
+  }, [previewing, data, categories]);
+  const staged = useMemo(() => stageView({ records: data?.records ?? [], welcome: stage === 'welcome', preview: previewJourney, designer: designReport,
+    entries: workspace.entries, target: workspace.target, selectedEntry: workspace.selectedEntry ?? null }), [data, stage, previewJourney, designReport, workspace.entries, workspace.target, workspace.selectedEntry]);
+  const byId = useMemo(() => new Map((data?.records ?? []).map(r => [r.recording_id, r])), [data]);
+  const fit = useMemo(() => workspace.target && workspace.target.waypoints.length > 1 && workspace.entries.length ?
+    compareSequence(workspace.entries.map(entry => byId.get(entry.recording_id)), workspace.target.waypoints) : null, [workspace.target, workspace.entries, byId]);
+  const stagePlayback = useMemo<StagePlayback>(() => {
+    if (!playback) return null;
+    const index = playback.entry_id ? workspace.entries.findIndex(entry => entry.entry_id === playback.entry_id) : -1;
+    return { id: playback.recording_id, index: index >= 0 ? index : null, playing: playback.playing };
+  }, [playback, workspace.entries]);
+  const clock = useCallback(() => player.current?.clock() ?? null, []);
+  useEffect(() => { if (designReport?.step !== 'playlist') setRevealPhase(null); }, [designReport?.step]);
+  const allIds = useMemo(() => (data?.records ?? []).map(r => r.recording_id), [data]);
+  const stageSelect = (id: string) => {
+    setCardFor(id);
+    if (stage === 'app' && mode === 'design' && step === 'playlist' && playlist.current?.selectRecording(id)) return;
+    select(id);
+  };
+  /** The chosen recording on the stage: listen to it, and in the playlist step use it at the selected position or add it. */
+  const stageCard = (item: Recording) => {
+    const slot = workspace.entries.findIndex(entry => entry.recording_id === item.recording_id), loaded = playback?.recording_id === item.recording_id;
+    const actions: { label: string; run: () => void; primary?: boolean; aria?: string }[] = [loaded && playback!.playing ? { label: 'Pause', run: () => player.current?.pause(), primary: true, aria: `Pause ${item.title}` } :
+      loaded && !playback!.finished ? { label: 'Resume', run: () => player.current?.resume(), primary: true, aria: `Resume ${item.title}` } :
+        { label: 'Listen', run: () => player.current?.listen(item), primary: true, aria: `Listen to ${item.title}` }];
+    if (stage === 'app' && mode === 'design' && step === 'playlist') {
+      const at = workspace.entries.findIndex(entry => entry.entry_id === workspace.selectedEntry);
+      if (at >= 0 && workspace.entries[at].recording_id !== item.recording_id && !workspace.lockedEntries?.includes(workspace.entries[at].entry_id))
+        actions.push({ label: `Use at ${at + 1}`, run: () => { playlist.current?.replaceSelected(item); }, aria: `Use ${item.title} at position ${at + 1}` });
+      if (slot < 0) actions.push({ label: '+ Playlist', run: () => addToPlaylist([item]), aria: `Add ${item.title} to the playlist` });
+    }
+    return { record: item, slot: slot >= 0 ? slot : null, playing: loaded && !!playback?.playing, actions, onClose: () => setCardFor(null) };
+  };
   if (stage === 'intro') return <Intro onDone={() => setStage('welcome')}/>;
   return <div className={`app-shell stage-${stage}${compact ? ' is-compact' : ''}`}>
     <a className="skip-link" href="#main">Skip to main content</a>
@@ -246,11 +315,27 @@ export default function App() {
           {workspace.dirty && <span className="unsaved-mark" aria-hidden="true"> ●</span>}{workspace.dirty && <span className="sr-only">, unsaved changes</span>}</button></div>}
       <div className="header-actions"><span className="local-status" title="Every recording was analyzed offline by the original Being Good engine. Nothing here changes those results."><i className="led ok" aria-hidden="true"/>{data ? `${data.count} RECORDINGS` : ''}</span>
         <button className="key" onClick={() => setAboutOpen(true)}>How it works</button></div></header>
-    {stage === 'welcome' && <main id="main" className="welcome-main"><Welcome records={data?.records ?? []} categories={categories} onCreate={() => openDesigner('start')} onExplore={openExplorer}
-      onSuggest={value => { setSuggestion({ ...value }); openDesigner('playlist'); }} onAbout={() => setAboutOpen(true)}/>
-      {error && <p role="alert" className="launch-error welcome-error">{error}</p>}</main>}
-    {stage === 'app' && <main id="main" className={`workspace layout-${layout}`}>
-      {compact && <nav className="collection-rail" aria-label="Collection (collapsed)">
+    <main id="main" className={`workspace layout-${layout} ${stage === 'welcome' ? 'is-welcome' : mode === 'design' ? 'is-design' : 'is-explore'}`}>
+      {stage === 'welcome' && <div className="welcome-overlay" ref={welcomeBox}><Welcome records={data?.records ?? []} categories={categories} onCreate={() => openDesigner('start')} onExplore={openExplorer}
+        onSuggest={value => { setSuggestion({ ...value }); openDesigner('playlist'); }} onAbout={() => setAboutOpen(true)} onPreview={setPreviewing}/>
+        {error && <p role="alert" className="launch-error welcome-error">{error}</p>}</div>}
+      {staging && data && <section className="stage-panel" aria-label="RTP space" style={{ '--inset-left': `${insets.left}px`, '--inset-right': `${insets.right}px` } as React.CSSProperties}>
+        <JourneyStage ref={stageRef} records={data.records} selected={selected} onSelect={stageSelect} peek={peek}
+          emphasis={staged.emphasis} intended={staged.intended} marker={staged.marker} journey={staged.journey} revealKey={revealKey}
+          playback={stagePlayback} clock={clock} insets={insets} reduced={reduced} onReveal={setRevealPhase}
+          label={`Rhythm, Texture and Pitch space with ${data.count} recordings. ${staged.caption}. Drag to orbit, arrow keys rotate, plus and minus zoom, F frames the playlist. Choose recordings by keyboard in the panel.`}
+          fallback={<ProjectionView records={data.records} visibleIds={allIds} selected={selected} onSelect={stageSelect} axes="RT" frame="music" playing={playing} paused={paused}
+            path={staged.journey?.style === 'journey' ? staged.journey.ids.filter((id): id is string => !!id) : []} targetPath={staged.intended ?? staged.journey?.waypoints ?? undefined}/>}>
+          <StageHud caption={staged.caption} onCommand={name => stageRef.current?.command(name)} onSkip={() => stageRef.current?.finishReveal()}
+            status={revealPhase === 'searching' ? { text: `Searching ${data.count} recordings for the ${workspace.entries.length} points along your shape…`, searching: true } :
+              revealPhase === 'done' && fit?.mean != null ? { text: `${workspace.entries.length} recordings found · ${fit.mean < .35 ? 'closely' : fit.mean < .7 ? 'loosely' : 'roughly'} following your shape · ${fit.mean.toFixed(2)} RTP units off on average`, searching: false } : null}
+            legend={{ shape: !!(staged.intended || staged.journey?.waypoints), journey: staged.journey?.style === 'journey' ? workspace.name : null, count: workspace.entries.length,
+              tethers: !!staged.journey?.targets && staged.journey.style === 'journey' }}
+            moods={categories} explore={stage === 'app' ? () => { setView('RT'); openExplorer(); } : undefined}
+            card={record && cardFor === record.recording_id && revealPhase !== 'searching' ? stageCard(record) : null}/>
+        </JourneyStage>
+      </section>}
+      {stage === 'app' && mode === 'explore' && compact && <nav className="collection-rail" aria-label="Collection (collapsed)">
         <div className="rail-key"><button className="key" aria-label={`${drawer ? 'Close' : 'Open'} collection, ${data?.count ?? 0} recordings`} aria-expanded={drawer} aria-controls="recordings" onClick={() => setDrawer(value => !value)}>
           <svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true"><path d="M0 1 h16 M0 6 h16 M0 11 h16" stroke="currentColor" strokeWidth="1.6"/></svg><span className="mono">{data ? shown.length : '–'}</span></button><span aria-hidden="true">LIST</span></div>
         <div className="rail-key"><button className="key" aria-label="Search recordings" onClick={() => openDrawer('search')}>
@@ -264,7 +349,7 @@ export default function App() {
           aria-label={`Show ${record.title} in the collection${playing === record.recording_id ? paused ? ', paused' : ', now playing' : ''}`} onClick={() => openDrawer()}>
           {playing === record.recording_id && <span className="rail-play" aria-hidden="true">{paused ? 'Ⅱ' : '▶'}</span>}<span className="mono">{String(selectedIndex + 1).padStart(2, '0')}</span></button>}
       </nav>}
-      <section className={`collection-panel${compact ? ` is-drawer${drawer ? ' is-open' : ''}` : ''}`} id="recordings" aria-label="Collection" tabIndex={-1}
+      {stage === 'app' && mode === 'explore' && <section className={`collection-panel${compact ? ` is-drawer${drawer ? ' is-open' : ''}` : ''}`} id="recordings" aria-label="Collection" tabIndex={-1}
         onKeyDown={event => { if (compact && event.key === 'Escape') { setDrawer(false); } }}>
         <div className="collection-head">
           <div className="collection-heading"><span className="panel-title">COLLECTION</span><span className="mono muted" aria-live="polite">{data ? `${shown.length} / ${data.count}` : '—'}</span>
@@ -291,8 +376,8 @@ export default function App() {
         {data?.count === 0 && <p className="collection-note">No recordings are published yet.</p>}
         {!data && !error && <p role="status" className="collection-note">Opening the collection…</p>}
         {error && <p role="alert" className="launch-error">{error}</p>}
-      </section>
-      <section className={`field-panel layout-${layout}`} aria-label="Perceptual environment">
+      </section>}
+      {stage === 'app' && mode === 'explore' && <section className={`field-panel layout-${layout}`} aria-label="Perceptual environment">
         {<div className="field-toolbar">
           {!compact && <span className="panel-title">RTP FIELD</span>}
           <div className="view-controls segmented" role="group" aria-label="Field view">{(['RT', 'RP', 'TP', '3D', 'atlas'] as const).map(mode =>
@@ -335,8 +420,8 @@ export default function App() {
               `${shown.length} RECORDINGS · CLICK A DOT TO SELECT · DRAG ON EMPTY SPACE TO CHOOSE A REGION`}</p>
             {view === '3D' && cameraKeys}</div>}
         </div>}
-      </section>
-      <aside className={`right-column layout-${layout}`} aria-label={mode === 'explore' ? 'Selected recording' : 'Playlist Designer'}>
+      </section>}
+      <aside ref={asideBox} hidden={stage !== 'app'} className={`right-column layout-${layout}`} aria-label={mode === 'explore' ? 'Selected recording' : 'Playlist Designer'}>
         {mode === 'explore' && <RecordingCard record={record} index={selectedIndex} total={data?.count ?? 0} inView={inView} playback={playback}
           onListen={item => player.current?.listen(item)} onPause={() => player.current?.pause()} onResume={() => player.current?.resume()}
           records={data?.records ?? []} onSelect={select}
@@ -345,13 +430,13 @@ export default function App() {
           onHide={() => { setNeighborhood(null); setTrail([]); }} onAtlas={showAtlas}/>}
         {mode === 'design' && data && <div className="designer-column">
           <PlaylistDesigner records={data.records} categories={categories} selectedId={selected} suggestion={suggestion} hasPlaylist={entryCount > 0}
-            step={step} onStep={setStep} onSelect={id => { const item = data.records.find(r => r.recording_id === id); if (item) locate(item); }} onCreate={created} onExplore={openExplorer} onSuggestionUsed={() => setSuggestion(null)} onShape={setShape}/>
+            step={step} onStep={setStep} onSelect={id => { const item = data.records.find(r => r.recording_id === id); if (item) locate(item); }} onCreate={created} onExplore={openExplorer} onSuggestionUsed={() => setSuggestion(null)} onStage={setReport} onPeek={setPeek}/>
         </div>}
-        {data && <div className="playlist-host" hidden={mode !== 'design' || step !== 'playlist'}><PlaylistWorkspace ref={playlist} records={data.records} onSelect={setSelected} playback={playback}
+        {data && <div className="playlist-host" hidden={mode !== 'design' || step !== 'playlist'}><PlaylistWorkspace ref={playlist} records={data.records} onSelect={setSelected} playback={playback} onPeek={setPeek}
           onChange={setWorkspace} onReshape={() => setStep('shape')} onSaved={saved}
           onListen={item => player.current?.listen(item)} onPlay={(name, entries, start) => player.current?.playPlaylist(name, entries, start)}/></div>}
       </aside>
-    </main>}
+    </main>
     <ListeningDock ref={player} visibleIds={visibleIds} onPlaybackChange={setPlayback} onLocate={locate}/>
     <FilterPanel open={filterOpen} onClose={() => setFilterOpen(false)} value={filters} onApply={setFilters} categories={categories} intensity={data?.intensity_available ?? false}
       matching={narrowed ? shown.length : null} total={data?.count}/>

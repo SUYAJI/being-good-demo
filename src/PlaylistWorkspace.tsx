@@ -4,11 +4,17 @@ import { colorOf, timeLabel, type Recording, type RTP } from './types';
 import { emptyPlaylist, moveEntry, playlistPayload, predictorWarnings, type PlaybackPosition, type Playlist, type PlaylistEntry, type QueueEntry } from './playlists';
 import { PlaylistTrajectory } from './PlaylistTrajectory';
 import { compareSequence, regenerateUnlocked, rtpDistance, type Generation } from './trajectoryDesign';
+import { rankReplacements } from './stage/stageView';
 import type { Created } from './PlaylistDesigner';
 import { undoKey, useHistory } from './history';
 
-export type PlaylistHandle = { add: (records: Recording[]) => string[] | null; remove: (entryIds: string[]) => void; create: (created: Created) => void };
-export type WorkspaceSummary = { name: string; entries: PlaylistEntry[]; dirty: boolean; targetDirty: boolean; saved: boolean };
+export type PlaylistHandle = { add: (records: Recording[]) => string[] | null; remove: (entryIds: string[]) => void; create: (created: Created) => void;
+  /** Select the first occurrence of a recording; false when it is not in the playlist. */
+  selectRecording: (recordingId: string) => boolean;
+  /** Put a recording at the selected position (the same edit as Use in the replacement list). */
+  replaceSelected: (record: Recording) => boolean };
+export type WorkspaceSummary = { name: string; entries: PlaylistEntry[]; dirty: boolean; targetDirty: boolean; saved: boolean;
+  target?: Playlist['target']; selectedEntry?: string | null; lockedEntries?: string[] };
 /** Locks are entry identities for this editing session; they are not saved with the playlist. */
 type Work = { draft: Playlist; generation: Generation | null; locks: string[]; origin: string | null };
 const payloadKey = (playlist: Playlist) => JSON.stringify(playlistPayload(playlist));
@@ -16,20 +22,18 @@ const initialWork = (): Work => ({ draft: emptyPlaylist(), generation: null, loc
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 /** Candidates for one position, nearest first to its desired RTP (or to the current recording without a target). */
-function Replacements({ index, entry, records, target, inPlaylist, onUse, onListen }: {
+function Replacements({ index, entry, records, target, inPlaylist, onUse, onListen, onPeek }: {
   index: number; entry: PlaylistEntry; records: Recording[]; target: RTP | null; inPlaylist: Set<string>;
-  onUse: (record: Recording) => void; onListen: (record: Recording) => void;
+  onUse: (record: Recording) => void; onListen: (record: Recording) => void; onPeek?: (id: string | null) => void;
 }) {
   const [limit, setLimit] = useState(8);
   const current = records.find(record => record.recording_id === entry.recording_id);
   const reference = target ?? current?.raw_rtp ?? null;
-  const ranked = useMemo(() => records.filter(record => record.playback_status === 'available' && record.recording_id !== entry.recording_id)
-    .map(record => ({ record, distance: reference ? rtpDistance(record.raw_rtp, reference) : null }))
-    .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0) || a.record.title.localeCompare(b.record.title)), [records, entry.recording_id, reference]);
+  const ranked = useMemo(() => rankReplacements(records, entry.recording_id, reference), [records, entry.recording_id, reference]);
   return <section className="replacements" aria-label={`Replacements for position ${index + 1}`}>
     <p className="replacements-title"><strong>Try a different recording at {index + 1}</strong><span className="fine-print">Closest first to {target ? 'this point on your shape' : current ? `“${current.title}”` : 'the start of the list'}.</span></p>
-    <ol>{ranked.slice(0, limit).map(({ record, distance }) => <li key={record.recording_id}>
-      <span><strong>{record.title}</strong><small><i style={{ background: colorOf(record) }}/>{record.mood.label}{inPlaylist.has(record.recording_id) && ' · already in playlist'}</small></span>
+    <ol>{ranked.slice(0, limit).map(({ record, distance }) => <li key={record.recording_id} onMouseEnter={() => onPeek?.(record.recording_id)} onMouseLeave={() => onPeek?.(null)}>
+      <span><strong>{record.title}</strong><small><i style={{ background: colorOf(record) }}/>{record.mood.label}{distance !== null && <span className="mono"> · {distance.toFixed(2)} away</span>}{inPlaylist.has(record.recording_id) && ' · already in playlist'}</small></span>
       <button aria-label={`Audition ${record.title}`} onClick={() => onListen(record)}>Listen</button>
       <button aria-label={`Use ${record.title} at position ${index + 1}`} onClick={() => onUse(record)}>Use</button></li>)}</ol>
     {ranked.length > limit && <button onClick={() => setLimit(value => value + 8)}>Show more</button>}
@@ -40,16 +44,21 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
   records: Recording[]; onSelect: (id: string) => void; onListen: (record: Recording) => void;
   onPlay: (name: string, entries: QueueEntry[], start?: number) => void;
   playback?: PlaybackPosition | null; compact?: boolean; onOpenFull?: () => void; onChange?: (summary: WorkspaceSummary) => void; onReshape?: () => void; onSaved?: () => void;
-}>(function PlaylistWorkspace({ records, onSelect, onListen, onPlay, playback, compact = false, onOpenFull, onChange, onReshape, onSaved }, ref) {
+  onPeek?: (id: string | null) => void;
+}>(function PlaylistWorkspace({ records, onSelect, onListen, onPlay, playback, compact = false, onOpenFull, onChange, onReshape, onSaved, onPeek }, ref) {
   const [saved, setSaved] = useState<Playlist[]>([]);
   const history = useHistory(initialWork), work = history.value, draft = work.draft, generation = work.generation;
   const [baseline, setBaseline] = useState<string | null>(() => payloadKey(emptyPlaylist()));
   const [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<string | null>(null), [notice, setNotice] = useState('');
+  // Whether the listener chose the selected position (rather than it being selected on opening), so the space only offers alternatives when asked.
+  const [chosen, setChosen] = useState(false);
   const [failure, setFailure] = useState('');
   const [pending, setPending] = useState<{ type: 'open'; playlist: Playlist; generation?: Generation; locks?: string[] } | { type: 'delete' } | null>(null);
   const key = payloadKey(draft), dirty = baseline === null || key !== baseline, untouched = work.origin !== null && key === work.origin;
-  useEffect(() => { onChange?.({ name: draft.name, entries: draft.entries, dirty, targetDirty: false, saved: !!draft.id && !dirty }); }, [draft.name, draft.entries, dirty, draft.id, onChange]);
+  const lockKey = work.locks.join(',');
+  useEffect(() => { onChange?.({ name: draft.name, entries: draft.entries, dirty, targetDirty: false, saved: !!draft.id && !dirty, target: draft.target ?? null, selectedEntry: chosen ? selected : null,
+    lockedEntries: lockKey ? lockKey.split(',') : [] }); }, [draft.name, draft.entries, dirty, draft.id, draft.target, selected, chosen, lockKey, onChange]);
   const fitHeading = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!draft.target || !fitHeading.current) return;
@@ -97,9 +106,18 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
     remove: ids => edit(playlist => ({ ...playlist, entries: playlist.entries.filter(entry => !ids.includes(entry.entry_id)) }),
       `remove ${plural(ids.length, 'recording')}`, `${plural(ids.length, 'addition')} undone · unsaved changes`),
     create: created => generated(created.result, created.target, created.name, created.locks),
+    selectRecording: recordingId => {
+      const entry = draft.entries.find(item => item.entry_id === selected && item.recording_id === recordingId) ?? draft.entries.find(item => item.recording_id === recordingId);
+      if (!entry) return false; select(entry); return true;
+    },
+    replaceSelected: record => {
+      const index = draft.entries.findIndex(entry => entry.entry_id === selected);
+      if (index < 0 || busy || locks.has(draft.entries[index].entry_id)) return false;
+      replace(index, draft.entries[index], record); return true;
+    },
   }));
   function select(entry: PlaylistEntry) {
-    setSelected(entry.entry_id);
+    setSelected(entry.entry_id); setChosen(true);
     onSelect(entry.recording_id);
   }
   function open(playlist: Playlist, generated?: Generation, keepHistory = false, lockIds: string[] = []) {
@@ -108,7 +126,7 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
     const next: Work = { draft: opened, generation: generated ?? null, locks: locked, origin: generated ? payloadKey(opened) : null };
     // Replacing an untouched generated draft is one undoable step, so the previous generation is never lost.
     if (keepHistory) history.commit(() => next, 'regenerate playlist'); else history.reset(next);
-    setBaseline(generated ? null : payloadKey(opened)); setSelected(generated ? opened.entries[0]?.entry_id ?? null : null);
+    setBaseline(generated ? null : payloadKey(opened)); setSelected(generated ? opened.entries[0]?.entry_id ?? null : null); setChosen(false);
     if ((generated || playlist.target) && opened.entries[0]) onSelect(opened.entries[0].recording_id);
     setPending(null); setFailure(''); setNotice(generated ? (keepHistory ? 'New playlist created · the previous one is one Undo away · not saved yet' : 'Playlist created · not saved yet') : playlist.id ?
       'Saved playlist opened' : 'New playlist');
@@ -219,6 +237,7 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
         const isPlaying = playback?.entry_id === entry.entry_id && playback.recording_id === entry.recording_id;
         const queueIndex = playable.findIndex(item => item.entry_id === entry.entry_id);
         return <li key={entry.entry_id} data-entry-id={entry.entry_id} data-recording-id={entry.recording_id} aria-current={isPlaying ? 'true' : undefined}
+          onMouseEnter={() => onPeek?.(entry.recording_id)} onMouseLeave={() => onPeek?.(null)}
           className={[selected === entry.entry_id && 'is-selected', isPlaying && 'is-playing', locked && 'is-locked', dragged === entry.entry_id && 'is-dragging', dropTarget === entry.entry_id && dragged !== entry.entry_id && 'is-drop-target'].filter(Boolean).join(' ')}
           draggable={!busy} onDragStart={event => { dragging.current = entry.entry_id; setDragged(entry.entry_id); select(entry); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', entry.entry_id); }}
           onDragEnd={() => { dragging.current = null; setDragged(null); setDropTarget(null); }} onDragOver={event => { if (!busy && dragging.current) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropTarget(entry.entry_id); } }}
@@ -252,7 +271,7 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
       })}</ol>
       {selectedEntry && (locks.has(selectedEntry.entry_id) ? <p className="fine-print">Position {selectedIndex + 1} is kept in place. Release it to swap the recording.</p> :
         <Replacements key={selectedEntry.entry_id} index={selectedIndex} entry={selectedEntry} records={records} target={comparison?.targets[selectedIndex] ?? null}
-          inPlaylist={inPlaylist} onListen={onListen} onUse={record => replace(selectedIndex, selectedEntry, record)}/>)}
+          inPlaylist={inPlaylist} onListen={onListen} onPeek={onPeek} onUse={record => replace(selectedIndex, selectedEntry, record)}/>)}
       {draft.entries.length === 0 && <p className="playlist-empty">Nothing here yet. Create a playlist with the Designer above, or add recordings with + in the collection.</p>}
     </section>
     </div>
