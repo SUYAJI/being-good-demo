@@ -299,7 +299,7 @@ export class StageRenderer {
   private nearCorner() { const v = this.camera.position; return { x: Math.sign(v.x) || 1, z: Math.sign(v.z) || 1 }; }
 
   private home() {
-    const radius = this.musicRadius(), d = radius / Math.sin(THREE.MathUtils.degToRad(this.fov() / 2)) * 1.04;
+    const radius = this.musicRadius(), d = radius / Math.sin(THREE.MathUtils.degToRad(this.fov() / 2)) * 1.16;
     this.fitDistance = d;
     this.controls.minDistance = d * .3; this.controls.maxDistance = d * 2.4;
     return new THREE.Vector3().setFromSphericalCoords(d, 1.12, -.8);
