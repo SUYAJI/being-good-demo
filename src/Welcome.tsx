@@ -29,9 +29,10 @@ export function Intro({ onDone, duration = 1700 }: { onDone: () => void; duratio
 
 /** The opening screen: what the Explorer is for, one primary action, a way in for browsing, and real suggested journeys.
  * The space itself is the picture beside it: hovering or focusing a suggestion draws that journey there. */
-export function Welcome({ records, categories, onCreate, onSuggest, onExplore, onAbout, onPreview }: {
+export function Welcome({ records, categories, onCreate, onSuggest, onExplore, onAbout, onPreview, library = [], onOpenSaved }: {
   records: Recording[]; categories: { id: string; label: string }[];
   onCreate: () => void; onSuggest: (suggestion: Suggestion) => void; onExplore: () => void; onAbout: () => void; onPreview?: (suggestion: Suggestion | null) => void;
+  library?: { id: string; name: string; count: number }[]; onOpenSaved?: (id: string) => void;
 }) {
   const suggestions = useMemo(() => suggestedJourneys(records, categories), [records, categories]);
   const moods = useMemo(() => categories.map(c => ({ ...c, count: records.filter(r => r.mood.id === c.id).length, color: records.find(r => r.mood.id === c.id) })).filter(m => m.count), [records, categories]);
@@ -56,6 +57,10 @@ export function Welcome({ records, categories, onCreate, onSuggest, onExplore, o
             <span className="suggestion-index mono">{String(index + 1).padStart(2, '0')}</span>
             <strong>{item.name}</strong><span>{item.description}</span><span className="mono muted">{item.length} recordings →</span></button>;
         })}</div>
+      </div>}
+      {library.length > 0 && onOpenSaved && <div className="welcome-saved">
+        <span className="label-caps">Your playlists in this browser</span>
+        <ul>{library.slice(0, 4).map(item => <li key={item.id}><button className="welcome-link" onClick={() => onOpenSaved(item.id)}>{item.name}</button><span className="mono muted"> · {item.count}</span></li>)}</ul>
       </div>}
       <p className="fine-print">{records.length || '…'} recordings from ccMixter, analyzed by the original Being Good engine. Playlists you make are saved in this browser.</p>
       {moods.length > 0 && <p className="welcome-moods" aria-label="Mood colours"><span className="label-caps muted">Colour is mood</span>{moods.map(m =>

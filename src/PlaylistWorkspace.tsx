@@ -12,9 +12,11 @@ export type PlaylistHandle = { add: (records: Recording[]) => string[] | null; r
   /** Select the first occurrence of a recording; false when it is not in the playlist. */
   selectRecording: (recordingId: string) => boolean;
   /** Put a recording at the selected position (the same edit as Use in the replacement list). */
-  replaceSelected: (record: Recording) => boolean };
+  replaceSelected: (record: Recording) => boolean;
+  /** Open a playlist saved in this browser (asking first when the current one has unsaved changes). */
+  openSaved: (id: string) => boolean };
 export type WorkspaceSummary = { name: string; entries: PlaylistEntry[]; dirty: boolean; targetDirty: boolean; saved: boolean;
-  target?: Playlist['target']; selectedEntry?: string | null; lockedEntries?: string[] };
+  target?: Playlist['target']; selectedEntry?: string | null; lockedEntries?: string[]; library?: { id: string; name: string; count: number }[] };
 /** Locks are entry identities for this editing session; they are not saved with the playlist. */
 type Work = { draft: Playlist; generation: Generation | null; locks: string[]; origin: string | null };
 const payloadKey = (playlist: Playlist) => JSON.stringify(playlistPayload(playlist));
@@ -57,8 +59,9 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
   const [pending, setPending] = useState<{ type: 'open'; playlist: Playlist; generation?: Generation; locks?: string[] } | { type: 'delete' } | null>(null);
   const key = payloadKey(draft), dirty = baseline === null || key !== baseline, untouched = work.origin !== null && key === work.origin;
   const lockKey = work.locks.join(',');
+  const library = useMemo(() => saved.map(playlist => ({ id: playlist.id!, name: playlist.name, count: playlist.entries.length })), [saved]);
   useEffect(() => { onChange?.({ name: draft.name, entries: draft.entries, dirty, targetDirty: false, saved: !!draft.id && !dirty, target: draft.target ?? null, selectedEntry: chosen ? selected : null,
-    lockedEntries: lockKey ? lockKey.split(',') : [] }); }, [draft.name, draft.entries, dirty, draft.id, draft.target, selected, chosen, lockKey, onChange]);
+    lockedEntries: lockKey ? lockKey.split(',') : [], library }); }, [draft.name, draft.entries, dirty, draft.id, draft.target, selected, chosen, lockKey, library, onChange]);
   const fitHeading = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!draft.target || !fitHeading.current) return;
@@ -110,6 +113,7 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
       const entry = draft.entries.find(item => item.entry_id === selected && item.recording_id === recordingId) ?? draft.entries.find(item => item.recording_id === recordingId);
       if (!entry) return false; select(entry); return true;
     },
+    openSaved: id => { const playlist = saved.find(item => item.id === id); if (!playlist) return false; requestOpen(playlist); return true; },
     replaceSelected: record => {
       const index = draft.entries.findIndex(entry => entry.entry_id === selected);
       if (index < 0 || busy || locks.has(draft.entries[index].entry_id)) return false;

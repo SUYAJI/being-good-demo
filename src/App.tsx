@@ -199,8 +199,13 @@ export default function App() {
       if (next?.playback_status === 'available') player.current?.listen(next);
     }
   };
-  const openDesigner = (next: Step = 'start') => { setMode('design'); setStep(next); setStage('app'); };
+  const openDesigner = (next: Step = 'start') => {
+    setMode('design'); setStep(next); setStage('app');
+    // On a phone the space sits above the panel: bring it into view so the journey can be seen arriving.
+    if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) window.scrollTo?.({ top: 0 });
+  };
   const openExplorer = () => { setMode('explore'); setStage('app'); };
+  const openSaved = (id: string) => { if (playlist.current?.openSaved(id)) { setRevealKey(key => key + 1); openDesigner('playlist'); } };
   const addToPlaylist = (records: Recording[]) => {
     const ids = playlist.current?.add(records);
     if (!ids?.length) return;
@@ -317,7 +322,8 @@ export default function App() {
         <button className="key" onClick={() => setAboutOpen(true)}>How it works</button></div></header>
     <main id="main" className={`workspace layout-${layout} ${stage === 'welcome' ? 'is-welcome' : mode === 'design' ? 'is-design' : 'is-explore'}`}>
       {stage === 'welcome' && <div className="welcome-overlay" ref={welcomeBox}><Welcome records={data?.records ?? []} categories={categories} onCreate={() => openDesigner('start')} onExplore={openExplorer}
-        onSuggest={value => { setSuggestion({ ...value }); openDesigner('playlist'); }} onAbout={() => setAboutOpen(true)} onPreview={setPreviewing}/>
+        onSuggest={value => { setSuggestion({ ...value }); openDesigner('playlist'); }} onAbout={() => setAboutOpen(true)} onPreview={setPreviewing}
+          library={workspace.library ?? []} onOpenSaved={openSaved}/>
         {error && <p role="alert" className="launch-error welcome-error">{error}</p>}</div>}
       {staging && data && <section className="stage-panel" aria-label="RTP space" style={{ '--inset-left': `${insets.left}px`, '--inset-right': `${insets.right}px` } as React.CSSProperties}>
         <JourneyStage ref={stageRef} records={data.records} selected={selected} onSelect={stageSelect} peek={peek}
@@ -432,6 +438,10 @@ export default function App() {
           <PlaylistDesigner records={data.records} categories={categories} selectedId={selected} suggestion={suggestion} hasPlaylist={entryCount > 0}
             step={step} onStep={setStep} onSelect={id => { const item = data.records.find(r => r.recording_id === id); if (item) locate(item); }} onCreate={created} onExplore={openExplorer} onSuggestionUsed={() => setSuggestion(null)} onStage={setReport} onPeek={setPeek}/>
         </div>}
+        {mode === 'design' && data && step === 'start' && !!workspace.library?.length && <section className="saved-shortcut" aria-label="Your saved playlists">
+          <span className="label-caps">Or open one of your playlists</span>
+          <ul>{workspace.library.slice(0, 6).map(item => <li key={item.id}><button onClick={() => openSaved(item.id)}><strong>{item.name}</strong><span className="mono">{item.count} recordings →</span></button></li>)}</ul>
+        </section>}
         {data && <div className="playlist-host" hidden={mode !== 'design' || step !== 'playlist'}><PlaylistWorkspace ref={playlist} records={data.records} onSelect={setSelected} playback={playback} onPeek={setPeek}
           onChange={setWorkspace} onReshape={() => setStep('shape')} onSaved={saved}
           onListen={item => player.current?.listen(item)} onPlay={(name, entries, start) => player.current?.playPlaylist(name, entries, start)}/></div>}

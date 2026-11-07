@@ -443,6 +443,8 @@ export class StageRenderer {
     const fresh = !this.journey || this.journey.style !== journey?.style;
     this.journey = journey;
     if (!same) this.rebuildJourney(reveal && !this.reduced && journey?.style === 'journey', reveal || fresh);
+    // Without motion the result is still announced, just without the search playing out.
+    if (!same && reveal && this.reduced && journey?.style === 'journey') this.callbacks.onReveal?.('done');
     else this.request();
   }
 

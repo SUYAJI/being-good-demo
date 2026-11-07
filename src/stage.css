@@ -35,7 +35,7 @@
 .stage-caption { max-width:52ch; font-size:13px; line-height:1.45; color:var(--soft); text-wrap:pretty }
 .stage-status { display:flex; align-items:center; gap:10px; padding:6px 8px 6px 12px; max-width:calc(100% - 44px);
   background:var(--readout); border:1px solid var(--ink); border-radius:2px; font-family:var(--mono); font-size:12px; box-shadow:0 10px 30px #1416190f; animation:status-in .3s ease both }
-.stage-status:not(.is-searching) { padding-right:12px; border-color:var(--line) }
+.stage-status:not(.is-searching) { padding:0; background:none; border:0; box-shadow:none; color:var(--ink); font-size:12px }
 .stage-status .led { animation:led-blink .7s steps(2,start) infinite }
 @keyframes status-in { from { opacity:0; transform:translateY(-4px) } }
 @keyframes led-blink { 50% { opacity:.25 } }
@@ -161,3 +161,12 @@
   .stage-status .led { animation:none }
 }
 .welcome-copy>p.welcome-moods { font-size:12px; line-height:1.5; max-width:none }
+.saved-shortcut { padding:4px 24px 24px; display:grid; gap:8px; border-top:1px solid var(--line); margin:0 24px; padding:16px 0 24px }
+.saved-shortcut ul,.welcome-saved ul { list-style:none; margin:0; padding:0; display:grid; gap:4px }
+.saved-shortcut button { width:100%; display:flex; justify-content:space-between; align-items:baseline; gap:12px; text-align:left; background:var(--readout); padding:9px 12px }
+.saved-shortcut button strong { font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.saved-shortcut button .mono { font-size:11px; color:var(--muted); white-space:nowrap }
+.welcome-saved { display:grid; gap:6px }
+.welcome-saved li { font-size:14px }
+.welcome-saved .welcome-link { font-size:14px; color:var(--ink) }
+.right-column[hidden] { display:none!important }

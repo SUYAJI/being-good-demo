@@ -14,6 +14,17 @@ away), the 3D field, nearby music, the mood atlas, filters and the listening
 dock. **How it works** explains RTP with real examples; recording credits have
 their own view.
 
+The welcome and the Playlist Designer share one **perspective space** of the
+collection (WebGL through Three.js, `src/stage/`). Each recording is drawn at its
+raw Rhythm, Texture and Pitch on one equal scale, with a floor shadow and stem so
+height (Pitch) reads at a glance. Your shape is the dashed ink line; a generated
+playlist is the orange line through its recordings, with a thin tether from each
+evenly spaced point on the shape to the recording chosen for it. Creating a
+playlist plays out that search (skippable, and skipped with reduced motion);
+playback traces progress along the line and pulses with the decoded peak level
+of the audio. Rendering is on demand, and the 2D field stands in when WebGL is
+unavailable.
+
 Nothing is analyzed in the browser: every position comes from the original
 pipeline, and the designer is arithmetic over those published values.
 
