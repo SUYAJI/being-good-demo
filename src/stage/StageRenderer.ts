@@ -696,7 +696,27 @@ export class StageRenderer {
       if (shown) element.style.transform = `translate(${Math.round(p.x + dx)}px, ${Math.round(p.y + dy)}px)`;
       return p;
     };
-    for (const label of this.edgeLabels) put(label.element, label.place(near));
+    // Controls drawn over the stage (camera keys, path legend), in stage pixels.
+    const origin = this.container.getBoundingClientRect();
+    const obstacles = [...(this.container.parentElement?.querySelectorAll<HTMLElement>('.stage-keys, .stage-legend') ?? [])]
+      .map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
+      .map(r => ({ left: r.left - origin.left, right: r.right - origin.left, top: r.top - origin.top, bottom: r.bottom - origin.top }));
+    for (const label of this.edgeLabels) {
+      if (!label.element.classList.contains('stage-axis')) { put(label.element, label.place(near)); continue; }
+      // On a narrow stage the axes run past its edges and under the controls: axis titles stay readable;
+      // tick numbers keep their true place.
+      const p = this.screen(label.place(near)), half = label.element.offsetWidth / 2 + 6, tall = label.element.offsetHeight / 2 + 4;
+      label.element.style.visibility = p.visible ? 'visible' : 'hidden';
+      if (!p.visible) continue;
+      const x = Math.min(w - half, Math.max(half, p.x));
+      let y = Math.min(h - 12, Math.max(12, p.y));
+      for (let pass = 0; pass < 3; pass++) {
+        const blocking = obstacles.find(o => x + half > o.left && x - half < o.right && y + tall > o.top && y - tall < o.bottom);
+        if (!blocking) break;
+        y = blocking.top - tall;
+      }
+      label.element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    }
     const size = this.pixelSize();
     for (const element of this.numbers) {
       const record = Number(element.dataset.record), slot = Number(element.dataset.slot);

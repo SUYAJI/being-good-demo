@@ -148,7 +148,8 @@
   .workspace.is-welcome .stage-caption { display:none }
   .stage-status { font-size:11px }
   .stage-card { top:auto; bottom:52px; left:12px; right:12px; width:auto }
-  .stage-legend { left:14px; right:auto; top:auto; bottom:14px; align-items:flex-start; max-width:55% }
+  /* Above the camera keys, which span most of a phone's width. */
+  .stage-legend { left:14px; right:auto; top:auto; bottom:50px; align-items:flex-start; max-width:calc(100% - 28px) }
   .stage-legend>span:not(.legend-path) { display:none }
   .stage-top { right:14px }
   .stage-keys { right:10px; bottom:10px }
