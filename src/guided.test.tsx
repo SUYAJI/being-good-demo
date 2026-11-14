@@ -42,14 +42,17 @@ test('mood starts need five recordings, presets stay inside 1–5, and the plann
   expect(suggestions[0].id).toBe('calm-to-lively'); expect(suggestions[0].description).toContain('Invented a'); expect(suggestions[0].description).toContain('Invented h');
 });
 
-test('a fresh visit shows the start-up mark, then the welcome; Skip and the primary action lead into the Playlist Designer', async () => {
+test('a fresh visit shows the start-up mark, then the welcome; Skip, the featured journey and Design your own lead into the Playlist Designer', async () => {
   sessionStorage.removeItem('being-good-demo.stage');
   const { default: App } = await import('./App');
   render(<App/>);
   fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
   expect(await screen.findByRole('heading', { name: 'Playlists that follow a shape.' })).toBeTruthy();
   await screen.findByText(/8 recordings from ccMixter/);
-  fireEvent.click(screen.getByRole('button', { name: 'Create a playlist' }));
+  // Rise and settle leads; the other suggestions follow it.
+  const featured = screen.getByRole('button', { name: /^Start with “Rise and settle”/ });
+  expect(screen.getAllByRole('button').indexOf(featured)).toBeLessThan(screen.getAllByRole('button').indexOf(screen.getByRole('button', { name: /Calm to lively/ })));
+  fireEvent.click(screen.getByRole('button', { name: 'Design your own' }));
   expect(screen.getByRole('region', { name: 'Playlist Designer' })).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'Where should your playlist begin?' })).toBeTruthy();
   expect(sessionStorage.getItem('being-good-demo.stage')).toBe('app');
@@ -75,7 +78,7 @@ test('start from a mood, pick a shape, create, swap a recording, save, and the p
   expect(screen.getByRole('button', { name: /^Playlist Designer · 5/ })).toBeTruthy();
   expect(screen.getByRole('note', { name: 'Playlist path legend' }).textContent).toContain('Rise and settle from Peaceful · 5');
   // Keep one recording and try different ones for the rest.
-  fireEvent.click(screen.getByRole('button', { name: 'Lock position 1' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Keep position 1' }));
   const first = tracks()[0].textContent;
   fireEvent.click(screen.getByRole('button', { name: 'Try different recordings' }));
   expect(tracks()[0].textContent).toBe(first);

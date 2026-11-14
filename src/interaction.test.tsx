@@ -39,11 +39,11 @@ async function openWorkspace(playlist: Playlist, onPlay = vi.fn(), posts: string
 test('locked positions survive regeneration; unlocked ones refill without repeats and undo restores them', async () => {
   const target = { ...journeyTarget([{ R: 1, T: 3, P: 3 }, { R: 5, T: 3, P: 3 }], 3), recipe: null };
   const { order } = await openWorkspace(savedPlaylist([five[4], five[1], five[0]], target));
-  fireEvent.click(screen.getByRole('button', { name: 'Lock position 1' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Keep position 1' }));
   expect(screen.getByRole('button', { name: 'Remove playlist track 1' }).hasAttribute('disabled')).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Try different recordings' }));
   expect(order()).toEqual([five[4], five[2], five[3]].map(r => r.recording_id));
-  expect(screen.getByText(/Swapped 2 recordings · 1 kept recording stayed/)).toBeTruthy();
+  expect(screen.getByText(/2 new recordings · 1 kept · same shape/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Undo playlist edit' }));
   expect(order()).toEqual([five[4], five[1], five[0]].map(r => r.recording_id));
 });

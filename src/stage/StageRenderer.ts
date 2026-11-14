@@ -218,6 +218,11 @@ export class StageRenderer {
 
     const resize = () => this.resize();
     this.observer = new ResizeObserver(resize); this.observer.observe(container);
+    // Text over the stage (status, caption, card) changes without moving the camera: place the labels around it again.
+    // Changes to the labels themselves are ignored, so this never feeds itself.
+    const overlay = new MutationObserver(changes => { if (changes.some(change => !this.layer.contains(change.target))) this.request(); });
+    if (container.parentElement) overlay.observe(container.parentElement, { childList: true, subtree: true, characterData: true });
+    this.cleanup.push(() => overlay.disconnect());
     this.listen();
     this.resize(); this.controls.update(); this.writeState(); this.request();
   }
@@ -519,11 +524,36 @@ export class StageRenderer {
     this.wayLabels.forEach(element => element.remove()); this.wayLabels = [];
     const points = this.journey?.style === 'journey' && this.waypoints.length > 1 ? this.waypoints : this.intended;
     if (!points || points.length < 2) return;
+    // A peak is an inner point that clearly gathers more energy (Rhythm and Texture, x and z here) than both ends.
+    const energy = (point: THREE.Vector3) => point.x + point.z, ends = Math.max(energy(points[0]), energy(points[points.length - 1]));
+    const inner = points.slice(1, -1).map((point, i) => ({ point, i: i + 1 })).sort((a, b) => energy(b.point) - energy(a.point))[0];
+    const peak = inner && energy(inner.point) - ends >= .5 ? inner.i : -1;
     points.forEach((point, i) => {
-      if (i !== 0 && i !== points.length - 1) return;
-      const element = document.createElement('span'); element.className = 'stage-way'; element.textContent = i === 0 ? 'START' : 'END';
+      const kind = i === 0 ? 'start' : i === points.length - 1 ? 'end' : i === peak ? 'peak' : null;
+      if (!kind) return;
+      const element = document.createElement('span'); element.className = `stage-way is-${kind}`; element.textContent = kind.toUpperCase(); element.dataset.kind = kind;
       element.dataset.x = String(point.x); element.dataset.y = String(point.y); element.dataset.z = String(point.z); this.layer.append(element); this.wayLabels.push(element);
     });
+  }
+
+  /** Keep the marks readable: START and END share one tag when they meet, and a position number that would cover
+   * a tag or an earlier number is left out (the playing position first). Hovering a recording still names it. */
+  private declutter() {
+    const box = (element: HTMLElement) => element.style.visibility === 'hidden' ? null : element.getBoundingClientRect();
+    const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    const start = this.wayLabels.find(element => element.dataset.kind === 'start'), end = this.wayLabels.find(element => element.dataset.kind === 'end');
+    if (start) start.textContent = 'START';
+    if (start && end) {
+      const a = box(start), b = box(end);
+      if (a && b && overlaps(a, b)) { start.textContent = 'START · END'; end.style.visibility = 'hidden'; }
+    }
+    const kept: DOMRect[] = this.wayLabels.flatMap(element => { const r = box(element); return r ? [r] : []; });
+    const ordered = [...this.numbers].sort((a, b) => Number(b.classList.contains('is-playing')) - Number(a.classList.contains('is-playing')) || Number(a.dataset.slot) - Number(b.dataset.slot));
+    for (const element of ordered) {
+      const r = box(element);
+      if (!r || Number(element.style.opacity || 1) < .05) continue;
+      if (kept.some(other => overlaps(r, other))) element.style.visibility = 'hidden'; else kept.push(r);
+    }
   }
 
   /** Ease the camera so the journey (or, without one, the whole frame) fills the visible stage. */
@@ -696,9 +726,9 @@ export class StageRenderer {
       if (shown) element.style.transform = `translate(${Math.round(p.x + dx)}px, ${Math.round(p.y + dy)}px)`;
       return p;
     };
-    // Controls drawn over the stage (camera keys, path legend), in stage pixels.
+    // Text and controls drawn over the stage (caption, status, camera keys, path legend), in stage pixels.
     const origin = this.container.getBoundingClientRect();
-    const obstacles = [...(this.container.parentElement?.querySelectorAll<HTMLElement>('.stage-keys, .stage-legend') ?? [])]
+    const obstacles = [...(this.container.parentElement?.querySelectorAll<HTMLElement>('.stage-caption, .stage-status, .stage-keys, .stage-legend') ?? [])]
       .map(e => e.getBoundingClientRect()).filter(r => r.width && r.height)
       .map(r => ({ left: r.left - origin.left, right: r.right - origin.left, top: r.top - origin.top, bottom: r.bottom - origin.top }));
     for (const label of this.edgeLabels) {
@@ -709,12 +739,11 @@ export class StageRenderer {
       label.element.style.visibility = p.visible ? 'visible' : 'hidden';
       if (!p.visible) continue;
       const x = Math.min(w - half, Math.max(half, p.x));
-      let y = Math.min(h - 12, Math.max(12, p.y));
-      for (let pass = 0; pass < 3; pass++) {
-        const blocking = obstacles.find(o => x + half > o.left && x - half < o.right && y + tall > o.top && y - tall < o.bottom);
-        if (!blocking) break;
-        y = blocking.top - tall;
-      }
+      const wanted = Math.min(h - 12, Math.max(12, p.y)), across = obstacles.filter(o => x + half > o.left && x - half < o.right);
+      const clear = (y: number) => y >= 12 && y <= h - 12 && !across.some(o => y + tall > o.top && y - tall < o.bottom);
+      // The nearest height, just above or below something in the way, that is clear of everything.
+      const y = [wanted, ...across.flatMap(o => [o.top - tall, o.bottom + tall])].filter(clear)
+        .reduce<number | null>((best, value) => best === null || Math.abs(value - wanted) < Math.abs(best - wanted) ? value : best, null) ?? wanted;
       label.element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     }
     const size = this.pixelSize();
@@ -727,6 +756,7 @@ export class StageRenderer {
     }
     // START and END hang below their points: position numbers sit up-right of the same recordings.
     for (const element of this.wayLabels) put(element, new THREE.Vector3(Number(element.dataset.x), Number(element.dataset.y), Number(element.dataset.z)), 0, size * .6 + 8);
+    this.declutter();
     const shown = this.hover >= 0 ? this.hover : this.peek;
     if (shown >= 0) {
       const record = this.records[shown], key = `${record.recording_id}:${this.slotOf[shown]}`;

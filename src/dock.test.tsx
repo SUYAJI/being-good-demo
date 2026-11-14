@@ -120,3 +120,16 @@ test('outside the current view the dock reports playing, paused and finished acc
   view.rerender(<ListeningDock ref={ref} visibleIds={[a.recording_id]} analyze={async () => waveform(null)}/>);
   expect(screen.queryByText(/Outside current view/)).toBeNull();
 });
+
+test('edits reach a playing playlist: a kept recording carries on in the new order, a replaced one stops', async () => {
+  mediaMocks(); const ref = createRef<PlayerHandle>(), [a, b, c, d] = ['a', 'b', 'c', 'd'].map(record);
+  const view = render(<ListeningDock ref={ref} analyze={async () => waveform(null)}/>), audio = view.container.querySelector('audio')!;
+  await act(async () => ref.current!.playPlaylist('Journey', [{ entry_id: '1', recording: a }, { entry_id: '2', recording: b }, { entry_id: '3', recording: c }], 0));
+  await act(async () => ref.current!.syncPlaylist([{ entry_id: '1', recording: a }, { entry_id: '2', recording: d }, { entry_id: '3', recording: c }]));
+  expect(audio.paused).toBe(false); expect(audio.src).toContain(a.recording_id);
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Next playlist track' })));
+  expect(audio.src).toContain(d.recording_id);
+  await act(async () => ref.current!.syncPlaylist([{ entry_id: '1', recording: a }, { entry_id: '2', recording: b }, { entry_id: '3', recording: c }]));
+  expect(audio.paused).toBe(true); expect(screen.getByText(/play the revised journey/)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Next playlist track' })).toBeNull();
+});

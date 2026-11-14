@@ -99,14 +99,19 @@ export function generateSequence(records: Recording[], waypoints: RTP[], request
 }
 
 /** Refill only unlocked positions against the same evenly spaced targets.
- * Locked recordings stay in place and are removed from the candidate pool, so the refill never repeats them;
- * refilled positions are distinct playable recordings chosen with the same minimum-total-distance assignment.
+ * Locked recordings stay in place and are removed from the candidate pool, so the refill never repeats them.
+ * The recordings being replaced are set aside too, so each refill offers different music near the same points;
+ * they return to the pool only if the collection is too small to fill the positions without them.
+ * Refilled positions are distinct playable recordings chosen with the same minimum-total-distance assignment.
  */
 export function regenerateUnlocked(records: Recording[], waypoints: RTP[], current: (Recording | undefined)[], locked: boolean[]) {
   const targets = interpolateTargets(waypoints, current.length);
   const kept = new Set(current.flatMap((record, index) => locked[index] && record ? [record.recording_id] : []));
-  const pool = eligible(records, waypoints), candidates = pool.candidates.filter(record => !kept.has(record.recording_id));
+  const replaced = new Set(current.flatMap((record, index) => !locked[index] && record ? [record.recording_id] : []));
   const slots = current.flatMap((_, index) => locked[index] ? [] : [index]);
+  const pool = eligible(records, waypoints), available = pool.candidates.filter(record => !kept.has(record.recording_id));
+  const fresh = available.filter(record => !replaced.has(record.recording_id));
+  const candidates = fresh.length >= slots.length ? fresh : available;
   if (!slots.length) return { recordings: null, targets, notices: ['Every position is locked; nothing to regenerate.'], eligible: candidates.length };
   if (candidates.length < slots.length) return { recordings: null, targets, eligible: candidates.length,
     notices: [`Only ${candidates.length} distinct playable recordings are free for ${slots.length} unlocked positions. Unlock fewer positions or add recordings.`] };

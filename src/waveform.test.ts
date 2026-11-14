@@ -50,3 +50,12 @@ test('refill respects candidate availability and leaves the playlist unchanged w
   expect(refill.recordings!.map(r => r!.recording_id)).not.toContain('gone');
   expect(regenerateUnlocked(records, shape, [records[0]], [true]).recordings).toBeNull();
 });
+
+test('trying different recordings puts other music near the same points in every unkept position', () => {
+  const many = [1, 1.2, 2.8, 3, 3.2, 4.8, 5].map((R, i) => record(`m${i}`, R));
+  const first = generateSequence(many, shape, 3).recordings;
+  const refill = regenerateUnlocked(many, shape, first, [false, true, false]).recordings!.map(r => r!.recording_id);
+  expect(refill).toEqual([many[1], first[1], many[5]].map(r => r.recording_id));
+  // Only a collection too small to fill the positions brings the replaced recordings back.
+  expect(regenerateUnlocked(records.slice(0, 3), shape, records.slice(0, 3), [false, false, false]).recordings).not.toBeNull();
+});

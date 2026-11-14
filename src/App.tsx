@@ -7,7 +7,7 @@ import { ProjectionView, boundText, type Projection, type Region } from './Proje
 import { AtlasSlice } from './AtlasSlice';
 import { FilterPanel, clearFilters, filterPayload, filtersActive, toggleMood } from './FilterPanel';
 import { AboutPanel, CreditsPanel } from './AboutPanel';
-import { PlaylistWorkspace, type PlaylistHandle, type WorkspaceSummary } from './PlaylistWorkspace';
+import { PlaylistWorkspace, fitWord, type PlaylistHandle, type WorkspaceSummary } from './PlaylistWorkspace';
 import { RecordingCard, type Neighborhood } from './RecordingCard';
 import { PlaylistDesigner, type Created, type Step, type Suggestion } from './PlaylistDesigner';
 import { Intro, Welcome } from './Welcome';
@@ -288,6 +288,13 @@ export default function App() {
     return { id: playback.recording_id, index: index >= 0 ? index : null, playing: playback.playing };
   }, [playback, workspace.entries]);
   const clock = useCallback(() => player.current?.clock() ?? null, []);
+  // Edits reach the player: kept recordings carry on in the new order, and one that was replaced stops.
+  useEffect(() => {
+    player.current?.syncPlaylist(workspace.entries.flatMap(entry => {
+      const recording = byId.get(entry.recording_id);
+      return recording?.playback_status === 'available' ? [{ entry_id: entry.entry_id, recording }] : [];
+    }));
+  }, [workspace.entries, byId]);
   useEffect(() => { if (designReport?.step !== 'playlist') setRevealPhase(null); }, [designReport?.step]);
   const allIds = useMemo(() => (data?.records ?? []).map(r => r.recording_id), [data]);
   const stageSelect = (id: string) => {
@@ -334,7 +341,10 @@ export default function App() {
             path={staged.journey?.style === 'journey' ? staged.journey.ids.filter((id): id is string => !!id) : []} targetPath={staged.intended ?? staged.journey?.waypoints ?? undefined}/>}>
           <StageHud caption={staged.caption} onCommand={name => stageRef.current?.command(name)} onSkip={() => stageRef.current?.finishReveal()}
             status={revealPhase === 'searching' ? { text: `Searching ${data.count} recordings for the ${workspace.entries.length} points along your shape…`, searching: true } :
-              revealPhase === 'done' && fit?.mean != null ? { text: `${workspace.entries.length} recordings found · ${fit.mean < .35 ? 'closely' : fit.mean < .7 ? 'loosely' : 'roughly'} following your shape · ${fit.mean.toFixed(2)} RTP units off on average`, searching: false } : null}
+              revealPhase === 'done' && fit?.mean != null ? { text: workspace.swapped
+                ? `${workspace.swapped.count} new recording${workspace.swapped.count === 1 ? '' : 's'}${workspace.swapped.kept ? ` · ${workspace.swapped.kept} kept` : ''} · same shape, ${fitWord(fit.mean)} following it`
+                : `${workspace.entries.length} recordings found · ${fitWord(fit.mean)} following your shape · ${fit.mean.toFixed(2)} RTP units off on average`, searching: false,
+                action: mode === 'design' && workspace.playState !== 'current' ? { label: workspace.playState === 'revised' ? 'Play revised journey' : 'Play this journey', run: () => playlist.current?.playJourney() } : undefined } : null}
             legend={{ shape: !!(staged.intended || staged.journey?.waypoints), journey: staged.journey?.style === 'journey' ? workspace.name : null, count: workspace.entries.length,
               tethers: !!staged.journey?.targets && staged.journey.style === 'journey' }}
             moods={categories} explore={stage === 'app' ? () => { setView('RT'); openExplorer(); } : undefined}
@@ -443,6 +453,7 @@ export default function App() {
           <ul>{workspace.library.slice(0, 6).map(item => <li key={item.id}><button onClick={() => openSaved(item.id)}><strong>{item.name}</strong><span className="mono">{item.count} recordings →</span></button></li>)}</ul>
         </section>}
         {data && <div className="playlist-host" hidden={mode !== 'design' || step !== 'playlist'}><PlaylistWorkspace ref={playlist} records={data.records} onSelect={setSelected} playback={playback} onPeek={setPeek}
+          revealing={revealPhase === 'searching'}
           onChange={setWorkspace} onReshape={() => setStep('shape')} onSaved={saved}
           onListen={item => player.current?.listen(item)} onPlay={(name, entries, start) => player.current?.playPlaylist(name, entries, start)}/></div>}
       </aside>

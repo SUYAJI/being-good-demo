@@ -37,6 +37,12 @@ export function Welcome({ records, categories, onCreate, onSuggest, onExplore, o
   const suggestions = useMemo(() => suggestedJourneys(records, categories), [records, categories]);
   const moods = useMemo(() => categories.map(c => ({ ...c, count: records.filter(r => r.mood.id === c.id).length, color: records.find(r => r.mood.id === c.id) })).filter(m => m.count), [records, categories]);
   useEffect(() => () => onPreview?.(null), [onPreview]);
+  // One journey leads: it starts where most of the music is, rises and comes back, so the shape is easy to see and hear.
+  const featured = suggestions.find(item => item.id === 'rise-settle') ?? suggestions[0] ?? null;
+  const others = suggestions.filter(item => item !== featured);
+  const valueOf = (item: typeof suggestions[number]): Suggestion => ({ start: item.start, preset: item.preset, endId: item.endId, length: item.length, name: item.name });
+  const previewing = (item: typeof suggestions[number]) => ({ onMouseEnter: () => onPreview?.(valueOf(item)), onMouseLeave: () => onPreview?.(null),
+    onFocus: () => onPreview?.(valueOf(item)), onBlur: () => onPreview?.(null) });
   return <section className="welcome" aria-label="Welcome">
     <div className="welcome-copy">
       <span className="eyebrow">BEING GOOD EXPLORER</span>
@@ -44,19 +50,21 @@ export function Welcome({ records, categories, onCreate, onSuggest, onExplore, o
       <p>Being Good describes each recording by three qualities you can hear: its <strong className="axis-R">Rhythm</strong>, its <strong className="axis-T">Texture</strong> and its <strong className="axis-P">Pitch</strong>. Every recording here has a place in that space.
         Choose where a playlist should start and how it should move, and the Explorer picks real recordings along the way.</p>
       <div className="welcome-actions">
-        <button className="primary key" onClick={onCreate}>Create a playlist</button>
-        <button className="key" onClick={onExplore}>Explore the music</button>
-        <button className="welcome-link" onClick={onAbout}>How it works</button>
+        {featured ? <button className="primary key welcome-featured" onClick={() => { onPreview?.(null); onSuggest(valueOf(featured)); }} {...previewing(featured)}>
+          <span>Start with “{featured.name}”</span><small>{featured.description} {featured.length} recordings.</small></button> :
+          <button className="primary key" onClick={onCreate}>Create a playlist</button>}
+        <div className="welcome-secondary">
+          {featured && <button className="key" onClick={onCreate}>Design your own</button>}
+          <button className="key" onClick={onExplore}>Explore the music</button>
+          <button className="welcome-link" onClick={onAbout}>How it works</button>
+        </div>
       </div>
-      {suggestions.length > 0 && <div className="welcome-starts">
-        <span className="label-caps">Or start with one of these</span>
-        <div className="suggestion-list">{suggestions.map((item, index) => {
-          const value: Suggestion = { start: item.start, preset: item.preset, endId: item.endId, length: item.length, name: item.name };
-          return <button key={item.id} className="suggestion" onClick={() => { onPreview?.(null); onSuggest(value); }}
-            onMouseEnter={() => onPreview?.(value)} onMouseLeave={() => onPreview?.(null)} onFocus={() => onPreview?.(value)} onBlur={() => onPreview?.(null)}>
+      {others.length > 0 && <div className="welcome-starts">
+        <span className="label-caps">Or try another journey</span>
+        <div className="suggestion-list">{others.map((item, index) =>
+          <button key={item.id} className="suggestion" onClick={() => { onPreview?.(null); onSuggest(valueOf(item)); }} {...previewing(item)}>
             <span className="suggestion-index mono">{String(index + 1).padStart(2, '0')}</span>
-            <strong>{item.name}</strong><span>{item.description}</span><span className="mono muted">{item.length} recordings →</span></button>;
-        })}</div>
+            <strong>{item.name}</strong><span>{item.description}</span><span className="mono muted">{item.length} recordings →</span></button>)}</div>
       </div>}
       {library.length > 0 && onOpenSaved && <div className="welcome-saved">
         <span className="label-caps">Your playlists in this browser</span>

@@ -6,7 +6,7 @@ const views: [StageCommand, string, string][] = [['frame', 'Frame', 'Frame the p
 
 /** Overlays on the stage: what it is showing, the reveal status, a key to the marks, camera keys and the chosen recording. */
 export function StageHud({ caption, status, onSkip, legend, onCommand, card, moods, explore }: {
-  caption: string; status: { text: string; searching: boolean } | null; onSkip: () => void;
+  caption: string; status: { text: string; searching: boolean; action?: { label: string; run: () => void } } | null; onSkip: () => void;
   legend: { shape: boolean; journey: string | null; count: number; tethers: boolean };
   onCommand: (name: StageCommand) => void;
   card: { record: Recording; slot: number | null; playing: boolean; actions: { label: string; run: () => void; primary?: boolean; aria?: string }[]; onClose: () => void } | null;
@@ -17,7 +17,8 @@ export function StageHud({ caption, status, onSkip, legend, onCommand, card, moo
       <p className="stage-caption">{caption}</p>
       <div className="stage-status-host" role="status">{status && <div className={`stage-status${status.searching ? ' is-searching' : ''}`}>
         {status.searching && <i className="led on" aria-hidden="true"/>}<span>{status.text}</span>
-        {status.searching && <button className="key key-small" onClick={onSkip}>Skip</button>}</div>}</div>
+        {status.searching && <button className="key key-small" onClick={onSkip}>Skip</button>}
+        {status.action && <button className="key primary stage-play" onClick={status.action.run}>▶ {status.action.label}</button>}</div>}</div>
     </div>
     {card && <section className="stage-card" aria-label={`Selected recording: ${card.record.title}`}>
       <header><span className="mono muted">{card.slot != null ? `PLAYLIST · ${String(card.slot + 1).padStart(2, '0')}` : 'RECORDING'}</span>

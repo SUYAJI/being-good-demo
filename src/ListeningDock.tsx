@@ -7,6 +7,8 @@ import { audioURL } from './staticBackend';
 /** listen switches the source; pause and resume act on the loaded recording only. */
 export type PlayerHandle = { listen: (recording: Recording) => void; playPlaylist: (name: string, entries: QueueEntry[], start?: number) => void;
   pause: () => void; resume: () => void;
+  /** Bring a playing (or set-aside) playlist in line with its edited order; other queues are left alone. */
+  syncPlaylist: (entries: QueueEntry[]) => void;
   /** The loaded recording's real position and its decoded peak envelope, read by the stage while it draws playback. */
   clock: () => { time: number; duration: number; peaks: number[] | null } | null };
 type Sequence = { name: string; entries: QueueEntry[]; index: number };
@@ -149,6 +151,27 @@ export const ListeningDock = forwardRef<PlayerHandle, { visibleIds?: string[]; o
       setSuspended(null); updateSequence({ name, entries: [...entries], index }); start(entries[index].recording, true);
     },
     pause, resume,
+    syncPlaylist: entries => {
+      // Kept recordings carry on and the revised order follows them. A recording that left the playlist stops,
+      // so the old order never keeps playing unannounced.
+      const align = (queue: Sequence) => {
+        const ids = new Set(entries.map(entry => entry.entry_id));
+        if (!entries.length || !queue.entries.some(entry => ids.has(entry.entry_id))) return { queue, stale: false };
+        const current = queue.entries[queue.index], at = entries.findIndex(entry => entry.entry_id === current.entry_id);
+        const same = at >= 0 && entries[at].recording.recording_id === current.recording.recording_id;
+        return { queue: same ? { ...queue, entries: [...entries], index: at } : null, stale: !same };
+      };
+      const queue = sequenceRef.current;
+      if (queue) {
+        const result = align(queue);
+        if (result.queue !== queue) updateSequence(result.queue);
+        if (result.stale) { pause(); setNotice('Replaced in the playlist · play the revised journey'); }
+      }
+      if (suspended) {
+        const { time, ...rest } = suspended, result = align(rest);
+        if (result.queue !== rest) setSuspended(result.queue ? { ...result.queue, time } : null);
+      }
+    },
     clock: () => {
       const element = audio.current, id = active.current;
       if (!element || !id) return null;
@@ -216,7 +239,7 @@ export const ListeningDock = forwardRef<PlayerHandle, { visibleIds?: string[]; o
         {recording ? <span className="playing-mood"><i style={{ background: colorOf(recording) }}/>{recording.mood.label} · {timeLabel(recording.duration_seconds)}
           {outside && <span className="fine-print">Outside current view · {playing ? 'still playing' : finished ? 'finished' : 'paused'}</span>}</span> :
           <span className="playing-mood">Select a recording, then Listen</span>}
-        {sequence && <span className="queue-context" title="Playing the order as it was when you pressed Play; edits do not interrupt playback.">
+        {sequence && <span className="queue-context" title="Follows your edits: kept recordings carry on in the new order.">
           {sequence.name} · {sequence.index + 1} / {sequence.entries.length}</span>}
         {suspended && !sequence && <span className="queue-context">Listening on its own · {suspended.name} paused at {suspended.index + 1} / {suspended.entries.length}, {timeLabel(suspended.time)}
           {' '}<button className="return-to-playlist key key-small" onClick={returnToPlaylist}>Return to playlist</button></span>}

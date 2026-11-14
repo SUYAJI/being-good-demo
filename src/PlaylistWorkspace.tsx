@@ -14,14 +14,21 @@ export type PlaylistHandle = { add: (records: Recording[]) => string[] | null; r
   /** Put a recording at the selected position (the same edit as Use in the replacement list). */
   replaceSelected: (record: Recording) => boolean;
   /** Open a playlist saved in this browser (asking first when the current one has unsaved changes). */
-  openSaved: (id: string) => boolean };
+  openSaved: (id: string) => boolean;
+  /** Play the current order from the first recording. */
+  playJourney: () => void };
 export type WorkspaceSummary = { name: string; entries: PlaylistEntry[]; dirty: boolean; targetDirty: boolean; saved: boolean;
-  target?: Playlist['target']; selectedEntry?: string | null; lockedEntries?: string[]; library?: { id: string; name: string; count: number }[] };
+  target?: Playlist['target']; selectedEntry?: string | null; lockedEntries?: string[]; library?: { id: string; name: string; count: number }[];
+  /** new: never played; current: the order last played; revised: changed since it was last played. */
+  playState?: 'new' | 'current' | 'revised';
+  /** Recordings swapped by the latest "Try different recordings", until a playlist is created or opened. */
+  swapped?: { count: number; kept: number } | null };
 /** Locks are entry identities for this editing session; they are not saved with the playlist. */
 type Work = { draft: Playlist; generation: Generation | null; locks: string[]; origin: string | null };
 const payloadKey = (playlist: Playlist) => JSON.stringify(playlistPayload(playlist));
 const initialWork = (): Work => ({ draft: emptyPlaylist(), generation: null, locks: [], origin: null });
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+export const fitWord = (mean: number | null | undefined) => mean == null ? 'loosely' : mean < .35 ? 'closely' : mean < .7 ? 'loosely' : 'roughly';
 
 /** Candidates for one position, nearest first to its desired RTP (or to the current recording without a target). */
 function Replacements({ index, entry, records, target, inPlaylist, onUse, onListen, onPeek }: {
@@ -47,21 +54,26 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
   onPlay: (name: string, entries: QueueEntry[], start?: number) => void;
   playback?: PlaybackPosition | null; compact?: boolean; onOpenFull?: () => void; onChange?: (summary: WorkspaceSummary) => void; onReshape?: () => void; onSaved?: () => void;
   onPeek?: (id: string | null) => void;
-}>(function PlaylistWorkspace({ records, onSelect, onListen, onPlay, playback, compact = false, onOpenFull, onChange, onReshape, onSaved, onPeek }, ref) {
+  /** The space is still playing out the search for a new playlist: hold the result until it arrives there too. */
+  revealing?: boolean;
+}>(function PlaylistWorkspace({ records, onSelect, onListen, onPlay, playback, compact = false, onOpenFull, onChange, onReshape, onSaved, onPeek, revealing = false }, ref) {
   const [saved, setSaved] = useState<Playlist[]>([]);
   const history = useHistory(initialWork), work = history.value, draft = work.draft, generation = work.generation;
   const [baseline, setBaseline] = useState<string | null>(() => payloadKey(emptyPlaylist()));
   const [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<string | null>(null), [notice, setNotice] = useState('');
+  const [played, setPlayed] = useState<string | null>(null), [swapped, setSwapped] = useState<{ count: number; kept: number } | null>(null);
   // Whether the listener chose the selected position (rather than it being selected on opening), so the space only offers alternatives when asked.
   const [chosen, setChosen] = useState(false);
   const [failure, setFailure] = useState('');
   const [pending, setPending] = useState<{ type: 'open'; playlist: Playlist; generation?: Generation; locks?: string[] } | { type: 'delete' } | null>(null);
   const key = payloadKey(draft), dirty = baseline === null || key !== baseline, untouched = work.origin !== null && key === work.origin;
   const lockKey = work.locks.join(',');
+  const orderKey = draft.entries.map(entry => `${entry.entry_id}:${entry.recording_id}`).join(',');
+  const playState = played === null ? 'new' : played === orderKey ? 'current' : 'revised';
   const library = useMemo(() => saved.map(playlist => ({ id: playlist.id!, name: playlist.name, count: playlist.entries.length })), [saved]);
   useEffect(() => { onChange?.({ name: draft.name, entries: draft.entries, dirty, targetDirty: false, saved: !!draft.id && !dirty, target: draft.target ?? null, selectedEntry: chosen ? selected : null,
-    lockedEntries: lockKey ? lockKey.split(',') : [], library }); }, [draft.name, draft.entries, dirty, draft.id, draft.target, selected, chosen, lockKey, library, onChange]);
+    lockedEntries: lockKey ? lockKey.split(',') : [], library, playState, swapped }); }, [draft.name, draft.entries, dirty, draft.id, draft.target, selected, chosen, lockKey, library, onChange, playState, swapped]);
   const fitHeading = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!draft.target || !fitHeading.current) return;
@@ -119,7 +131,12 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
       if (index < 0 || busy || locks.has(draft.entries[index].entry_id)) return false;
       replace(index, draft.entries[index], record); return true;
     },
+    playJourney: () => play(),
   }));
+  function play(from = 0) {
+    if (!playable.length) return;
+    setPlayed(orderKey); onPlay(draft.name, playable, from);
+  }
   function select(entry: PlaylistEntry) {
     setSelected(entry.entry_id); setChosen(true);
     onSelect(entry.recording_id);
@@ -131,6 +148,7 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
     // Replacing an untouched generated draft is one undoable step, so the previous generation is never lost.
     if (keepHistory) history.commit(() => next, 'regenerate playlist'); else history.reset(next);
     setBaseline(generated ? null : payloadKey(opened)); setSelected(generated ? opened.entries[0]?.entry_id ?? null : null); setChosen(false);
+    setPlayed(null); setSwapped(null);
     if ((generated || playlist.target) && opened.entries[0]) onSelect(opened.entries[0].recording_id);
     setPending(null); setFailure(''); setNotice(generated ? (keepHistory ? 'New playlist created · the previous one is one Undo away · not saved yet' : 'Playlist created · not saved yet') : playlist.id ?
       'Saved playlist opened' : 'New playlist');
@@ -176,7 +194,7 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
   }
   function replace(index: number, entry: PlaylistEntry, record: Recording) {
     edit(playlist => ({ ...playlist, entries: playlist.entries.map(item => item.entry_id === entry.entry_id ? { ...item, recording_id: record.recording_id, title: record.title } : item) }),
-      `replace position ${index + 1}`, 'Recording replaced · unsaved changes · captured playback unchanged');
+      `replace position ${index + 1}`, `Position ${index + 1} replaced · same shape · unsaved changes`);
     onSelect(record.recording_id);
   }
   function regenerate() {
@@ -190,9 +208,18 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
       requested: draft.entries.length, eligible: result.eligible, meanDistance, notices: result.notices },
     draft: { ...work.draft, entries: work.draft.entries.map((entry, index) => fixed[index] || !chosen[index] ? entry : { ...entry, recording_id: chosen[index]!.recording_id, title: chosen[index]!.title }) } }),
     'regenerate unlocked positions');
-    setNotice(`Swapped ${plural(fixed.filter(value => !value).length, 'recording')} · ${plural(locks.size, 'kept recording')} stayed · unsaved changes`); setFailure('');
+    const count = fixed.filter((value, index) => !value && !!chosen[index] && chosen[index]!.recording_id !== draft.entries[index].recording_id).length;
+    setSwapped({ count, kept: locks.size });
+    setNotice(`${plural(count, 'new recording')}${locks.size ? ` · ${locks.size} kept` : ''} · same shape, ${fitWord(meanDistance)} following it · unsaved changes`); setFailure('');
   }
   const selectedIndex = draft.entries.findIndex(entry => entry.entry_id === selected);
+  // Saving and editing history; for a journey they follow the listening order rather than leading it.
+  const tools = <>
+      <button className="playlist-save" disabled={busy || !loaded || !draft.name.trim() || (!dirty && !!draft.id)} onClick={save}>{busy ? 'Saving…' : 'Save playlist'}</button>
+      <button disabled={busy || !history.undoLabel} aria-label="Undo playlist edit" title={history.undoLabel ? `Undo ${history.undoLabel} (Ctrl+Z)` : undefined} onClick={() => { history.undo(); setNotice('Undone'); }}>↶</button>
+      <button disabled={busy || !history.redoLabel} aria-label="Redo playlist edit" title={history.redoLabel ? `Redo ${history.redoLabel} (Ctrl+Shift+Z)` : undefined} onClick={() => { history.redo(); setNotice('Redone'); }}>↷</button>
+      {!compact && <button disabled={busy || (!draft.id && !dirty)} onClick={() => setPending({ type: 'delete' })}>Delete</button>}
+  </>;
   const selectedEntry = draft.entries[selectedIndex];
   return <section className={`playlist-workspace${dirty ? ' is-dirty' : ''}${compact ? ' is-compact' : ''}`} aria-label="Playlist workspace" onKeyDown={event => {
     const action = undoKey(event); if (!action || busy) return;
@@ -200,32 +227,31 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
   }}>
     <div className="playlist-modes"><span className="eyebrow">YOUR PLAYLIST</span>
       {compact && onOpenFull && <button onClick={onOpenFull}>Full workspace</button>}</div>
-    <div className="playlist-library"><label>Saved playlists<select aria-label="Open saved playlist" disabled={busy || !loaded}
-      value={draft.id ?? ''} onChange={event => { const value = saved.find(playlist => playlist.id === event.target.value); if (value) requestOpen(value); }}>
-      <option value="">{saved.length ? 'Open a saved playlist…' : 'Nothing saved yet'}</option>{saved.map(playlist => <option key={playlist.id} value={playlist.id!}>{playlist.name} · {playlist.entries.length}</option>)}
-    </select></label>{!compact && <button disabled={busy} onClick={() => requestOpen(emptyPlaylist())}>New playlist</button>}</div>
     <div className="playlist-titlebar"><label className="playlist-name"><span className="sr-only">Playlist name</span><input aria-label="Playlist name" maxLength={100}
       disabled={busy} value={draft.name} onChange={event => { const name = event.target.value; edit(playlist => ({ ...playlist, name }), 'rename playlist', 'Unsaved changes', 'name'); }}/></label>
-      <button className="playlist-save" disabled={busy || !loaded || !draft.name.trim() || (!dirty && !!draft.id)} onClick={save}>{busy ? 'Saving…' : 'Save playlist'}</button>
-      <button disabled={busy || !history.undoLabel} aria-label="Undo playlist edit" title={history.undoLabel ? `Undo ${history.undoLabel} (Ctrl+Z)` : undefined} onClick={() => { history.undo(); setNotice('Undone'); }}>↶</button>
-      <button disabled={busy || !history.redoLabel} aria-label="Redo playlist edit" title={history.redoLabel ? `Redo ${history.redoLabel} (Ctrl+Shift+Z)` : undefined} onClick={() => { history.redo(); setNotice('Redone'); }}>↷</button>
-      {!compact && <button disabled={busy || (!draft.id && !dirty)} onClick={() => setPending({ type: 'delete' })}>Delete</button>}</div>
+      {!draft.target && tools}</div>
     {pending && <div className="playlist-confirm" role="group" aria-label="Confirm playlist action">
       <span>{pending.type === 'delete' ? `Delete “${draft.name}”? Recordings stay in the library.` : 'This playlist has unsaved changes.'}</span>
       {pending.type === 'open' ? <><button disabled={busy} onClick={async () => { if (await save()) open(pending.playlist, pending.generation, false, pending.locks); }}>Save and open</button>
         <button disabled={busy} onClick={() => open(pending.playlist, pending.generation, false, pending.locks)}>Discard and open</button></> :
         <button disabled={busy} onClick={removePlaylist}>Delete playlist</button>}
       <button disabled={busy} onClick={() => setPending(null)}>Cancel</button></div>}
+    {revealing ? <p className="playlist-finding" role="status"><i className="led on" aria-hidden="true"/>Finding {plural(draft.entries.length, 'recording')} along your shape…</p> : <>
     <div className="playlist-status" data-state={busy ? 'saving' : dirty ? 'dirty' : draft.id ? 'saved' : 'new'}><span role="status">{notice || (loaded ? 'Add recordings with + in the collection, or create a playlist in the Playlist Designer.' : 'Opening saved playlists…')}</span>
       <span>{draft.entries.length} recordings · {timeLabel(playable.reduce((sum, entry) => sum + entry.recording.duration_seconds, 0))}</span></div>
     {failure && <p className="playlist-error" role="alert">{failure}</p>}
+    {comparison && draft.target && <div className="journey-primary">
+      <button className="primary play-journey" disabled={!playable.length} onClick={() => play()}>▶ {playState === 'revised' ? 'Play revised journey' : 'Play this journey'}</button>
+      <p className="journey-hint">{swapped ? `${plural(swapped.count, 'new recording')}${swapped.kept ? `, ${swapped.kept} kept` : ''}. Your shape is unchanged, so the journey still moves the same way.`
+        : 'Hear it from the start. Keep the recordings you like, then try different ones for the rest: the shape stays the same.'}</p>
+    </div>}
     {comparison && draft.target && <div className="generation-fit" ref={fitHeading} aria-label="How the playlist follows your shape">
       <div><span className="eyebrow">FOLLOWING YOUR SHAPE</span><strong data-mean-distance={comparison.mean ?? ''}>{comparison.mean === null ? '—' : comparison.mean < .35 ? 'Closely' : comparison.mean < .7 ? 'Loosely' : 'Roughly'}
         <small>{comparison.mean === null ? '' : `${comparison.mean.toFixed(2)} RTP units off on average`}</small></strong></div>
       {generation && generation.meanDistance !== null && generation.meanDistance > .7 && <p className="coverage-note">This collection thins out along parts of your shape, so some recordings sit a little off it.</p>}
       <div className="regenerate-row"><button disabled={busy || locks.size === draft.entries.length} onClick={regenerate}>Try different recordings</button>
         {onReshape && <button onClick={onReshape}>Change the shape</button>}
-        <span className="fine-print">{locks.size ? `${plural(locks.size, 'recording')} kept in place. ` : 'Keep any recording to hold it in place. '}The rest are swapped for other recordings near the same points.</span></div>
+        <span className="fine-print">{locks.size ? `${plural(locks.size, 'recording')} kept in place. ` : 'Press Keep on any recording to hold it in place. '}The others are swapped for different recordings near the same points on your shape.</span></div>
       <details className="fit-details"><summary>Details</summary><p className="fine-print">{comparison.measured} of {draft.entries.length} positions measured against {draft.target.waypoints.length} waypoints
         {generation && <>; {generation.eligible} playable candidates; mean distance when created {generation.meanDistance?.toFixed(3)}</>}.
         Distance is Euclidean in raw Rhythm, Texture and Pitch. It measures geometry, not how the transitions sound.{generation?.notices.length ? ` ${generation.notices.join(' ')}` : ''}</p></details>
@@ -233,7 +259,7 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
     <div className="playlist-composition">
       {!compact && <PlaylistTrajectory entries={draft.entries} records={byId} selected={selected} onSelect={select} playback={playback} targets={comparison?.targets}/>}
       <section className="playlist-order" aria-label="Sequence editor">
-      <div className="playlist-sequence-heading"><h2>Listening order</h2><button className="primary" disabled={!playable.length} onClick={() => onPlay(draft.name, playable)}>▶ Play playlist</button></div>
+      <div className="playlist-sequence-heading"><h2>Listening order</h2>{!draft.target && <button className="primary" disabled={!playable.length} onClick={() => play()}>▶ Play playlist</button>}</div>
       {!compact && <p className="playlist-help">Drag to reorder, or use the arrows. Select a recording to swap it for another. Listen plays one recording on its own; Play from here plays the playlist from that point. Ctrl+Z undoes edits.</p>}
       {playable.length < draft.entries.length && <p className="quality-note">Recordings without audio stay in the order and are skipped by Play playlist.</p>}
       <ol className="playlist-tracks" aria-label="Playlist recordings">{draft.entries.map((entry, index) => {
@@ -259,8 +285,8 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
           <div className="playlist-track-actions"><span className="track-action-group"><button disabled={!record || record.playback_status === 'unavailable'} aria-label={`Listen to playlist track ${index + 1}`}
             title="Listen to this recording on its own" onClick={() => record && onListen(record)}>Listen</button>
             <button className="play-from-here" disabled={queueIndex < 0} aria-label={`Play from here: playlist from track ${index + 1}`} title="Play the playlist in order from this track"
-              onClick={() => onPlay(draft.name, playable, queueIndex)}><span aria-hidden="true">▶</span> Play from here</button></span>
-            <span className="track-action-group"><button aria-pressed={locked} aria-label={`Lock position ${index + 1}`} title={locked ? 'Kept: stays when you try different recordings' : 'Keep this recording when trying different ones'} onClick={() => {
+              onClick={() => play(queueIndex)}><span aria-hidden="true">▶</span> Play from here</button></span>
+            <span className="track-action-group"><button className="keep-key" aria-pressed={locked} aria-label={`Keep position ${index + 1}`} title={locked ? 'Kept: stays when you try different recordings' : 'Keep this recording when trying different ones'} onClick={() => {
               history.commit(current => ({ ...current, locks: locked ? current.locks.filter(id => id !== entry.entry_id) : [...current.locks, entry.entry_id] }), `${locked ? 'unlock' : 'lock'} position ${index + 1}`);
               setNotice(locked ? `Position ${index + 1} can change again` : `Position ${index + 1} kept`);
             }}>{locked ? 'Kept' : 'Keep'}</button>
@@ -278,6 +304,11 @@ export const PlaylistWorkspace = forwardRef<PlaylistHandle, {
           inPlaylist={inPlaylist} onListen={onListen} onPeek={onPeek} onUse={record => replace(selectedIndex, selectedEntry, record)}/>)}
       {draft.entries.length === 0 && <p className="playlist-empty">Nothing here yet. Create a playlist with the Designer above, or add recordings with + in the collection.</p>}
     </section>
-    </div>
+    {draft.target && <div className="playlist-titlebar playlist-tools">{tools}</div>}
+    </div></>}
+    <div className="playlist-library"><label>Saved playlists<select aria-label="Open saved playlist" disabled={busy || !loaded}
+      value={draft.id ?? ''} onChange={event => { const value = saved.find(playlist => playlist.id === event.target.value); if (value) requestOpen(value); }}>
+      <option value="">{saved.length ? 'Open a saved playlist…' : 'Nothing saved yet'}</option>{saved.map(playlist => <option key={playlist.id} value={playlist.id!}>{playlist.name} · {playlist.entries.length}</option>)}
+    </select></label>{!compact && <button disabled={busy} onClick={() => requestOpen(emptyPlaylist())}>New playlist</button>}</div>
   </section>;
 });
