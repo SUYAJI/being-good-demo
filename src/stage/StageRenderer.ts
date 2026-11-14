@@ -705,7 +705,8 @@ export class StageRenderer {
       put(element, this.positions[record], size * .6 + 5, -size * .6 - 4);
       element.classList.toggle('is-playing', this.playback?.id === this.records[record].recording_id);
     }
-    for (const element of this.wayLabels) put(element, new THREE.Vector3(Number(element.dataset.x), Number(element.dataset.y), Number(element.dataset.z)), 0, -size - 10);
+    // START and END hang below their points: position numbers sit up-right of the same recordings.
+    for (const element of this.wayLabels) put(element, new THREE.Vector3(Number(element.dataset.x), Number(element.dataset.y), Number(element.dataset.z)), 0, size * .6 + 8);
     const shown = this.hover >= 0 ? this.hover : this.peek;
     if (shown >= 0) {
       const record = this.records[shown], key = `${record.recording_id}:${this.slotOf[shown]}`;

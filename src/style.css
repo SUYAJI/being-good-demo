@@ -445,6 +445,8 @@ input[type=range]:focus-visible { outline-offset:6px }
   .strip-bottom { flex-direction:column; align-items:stretch }
   .camera-controls { flex-wrap:wrap }
   .listening-dock { position:sticky; bottom:0; z-index:9; flex-wrap:wrap }
+  /* On a phone an empty dock would hold a quarter of the screen; it appears once a recording is loaded. */
+  .listening-dock.is-idle { display:none }
   .dock-transport { padding:8px 12px; border-right:0 }
   .transport,.playlist-transport button { height:44px }
   .transport { width:48px }
