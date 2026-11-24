@@ -1,6 +1,6 @@
 # Being Good Explorer — demonstration
 
-An interactive version of the Being Good Explorer, hosted on GitHub Pages.
+[Open the Explorer](https://suyaji.github.io/being-good-demo/) and choose **Rise and settle**. Play the sequence, keep a recording, then try different recordings along the same path.
 
 Being Good places music in a shared space of three perceptual scores: Rhythm,
 Texture and Pitch (RTP). Each axis runs from 1 to 5. The Explorer opens with a
@@ -25,7 +25,7 @@ playback traces progress along the line and pulses with the decoded peak level
 of the audio. Rendering is on demand, and the 2D field stands in when WebGL is
 unavailable.
 
-Nothing is analyzed in the browser: every position comes from the original
+RTP scores are computed offline: every position comes from the original
 pipeline, and the designer is arithmetic over those published values.
 
 ## What is real here
@@ -43,7 +43,7 @@ pipeline, and the designer is arithmetic over those published values.
   same originals that were analyzed. The export checked each copy against its
   original by duration and loudness envelope.
 
-Nothing is analyzed in the browser. This repository contains no models,
+RTP scores are computed offline. This repository contains no models,
 extractor, mood-map bundle, database or private configuration. Those stay with
 the private engine.
 
